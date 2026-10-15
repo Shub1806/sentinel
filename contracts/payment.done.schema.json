@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.done",
+  "description": "Published by the payments service after it processes an order.created event.",
+  "type": "object",
+  "required": ["event_id", "event_type", "occurred_at", "payment_id", "order_id", "amount_cents", "currency", "status"],
+  "properties": {
+    "event_id":       { "type": "string", "format": "uuid" },
+    "event_type":     { "const": "payment.done" },
+    "occurred_at":    { "type": "string", "format": "date-time" },
+    "payment_id":     { "type": "string", "format": "uuid" },
+    "order_id":       { "type": "string", "format": "uuid" },
+    "amount_cents":   { "type": "integer", "minimum": 1 },
+    "currency":       { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "status":         { "enum": ["succeeded", "failed"] },
+    "failure_reason": { "type": ["string", "null"] }
+  }
+}

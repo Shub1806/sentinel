@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "order.created",
+  "description": "Published by the orders service after an order is saved to Postgres.",
+  "type": "object",
+  "required": ["event_id", "event_type", "occurred_at", "order_id", "customer_id", "amount_cents", "currency"],
+  "properties": {
+    "event_id":     { "type": "string", "format": "uuid", "description": "Unique per event; used to drop duplicates." },
+    "event_type":   { "const": "order.created" },
+    "occurred_at":  { "type": "string", "format": "date-time" },
+    "order_id":     { "type": "string", "format": "uuid" },
+    "customer_id":  { "type": "string", "minLength": 1, "maxLength": 64 },
+    "amount_cents": { "type": "integer", "minimum": 1, "description": "Money as whole cents, never floats." },
+    "currency":     { "type": "string", "pattern": "^[A-Z]{3}$" }
+  }
+}

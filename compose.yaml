@@ -62,6 +62,17 @@ services:
       redpanda:
         condition: service_healthy
 
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.9
+    container_name: sentinel-redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    # Creates the topics once; "already exists" errors are fine on later runs
+    command: -c "rpk topic create order.created payment.done --partitions 3 -X brokers=redpanda:9092 || true"
+    restart: "no"  
+
 volumes:
   postgres-data:
   redpanda-data:
