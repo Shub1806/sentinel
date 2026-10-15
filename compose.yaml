@@ -1,0 +1,67 @@
+# Local development dependencies for Sentinel.
+# Start:  docker compose up -d
+# Stop:   docker compose down        (keeps data)
+# Reset:  docker compose down -v     (deletes data)
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: sentinel-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+    ports:
+      - "15432:5432"
+    volumes:
+      # Postgres 18 stores data under /var/lib/postgresql (changed from earlier versions)
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.9
+    container_name: sentinel-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode dev-container
+      - --smp 1
+      - --memory 1G
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+    ports:
+      - "19092:19092"   # Kafka API for apps running on your Mac
+      - "19644:9644"    # Admin API
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.7.3
+    container_name: sentinel-console
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda:9092"]
+    entrypoint: /bin/sh
+    command: -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml; /app/console'
+    ports:
+      - "8090:8080"     # 8090 on your Mac, so 8080 stays free for the orders service
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redpanda-data:
