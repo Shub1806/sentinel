@@ -1,0 +1,54 @@
+# ---------- macOS ----------
+.DS_Store
+
+# ---------- Editors ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# ---------- Secrets (never commit) ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig*
+*.kubeconfig
+
+# ---------- Java (orders service) ----------
+target/
+build/
+.gradle/
+*.class
+
+# ---------- Node.js (notifications service) ----------
+node_modules/
+dist/
+coverage/
+npm-debug.log*
+
+# ---------- Python (payments service + agent) ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# ---------- Terraform ----------
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# ---------- Helm ----------
+charts/*/charts/
+*.tgz
+
+# ---------- Evaluation run output ----------
+eval/runs/
