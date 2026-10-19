@@ -12,7 +12,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import tools.jackson.databind.ObjectMapper;
 
 @Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@SpringBootTest(properties = "outbox.relay.enabled=false")
 class OrderServiceTests {
 
     @Autowired
