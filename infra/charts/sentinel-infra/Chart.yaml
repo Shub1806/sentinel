@@ -1,0 +1,5 @@
+apiVersion: v2
+name: sentinel-infra
+description: Local-dev infrastructure for Sentinel - single-node Redpanda and a CloudNativePG Postgres cluster.
+type: application
+version: 0.1.0

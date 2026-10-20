@@ -1,8 +1,7 @@
 # Values for the official LocalStack Helm chart (localstack/localstack, chart 0.7.1).
-# Install:
-#   helm upgrade --install localstack localstack/localstack --version 0.7.1 \
-#     --namespace sentinel -f infra/helm-values/localstack.yaml
-# The auth token comes from the "localstack-auth" Secret, which is created by hand and never committed.
+# Installed by Terraform (infra/terraform/platform).
+# The auth token comes from the "localstack-auth" Secret, which Terraform creates from
+# the TF_VAR_localstack_auth_token environment variable. The token is never committed.
 
 image:
   repository: localstack/localstack
