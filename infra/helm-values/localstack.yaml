@@ -1,0 +1,37 @@
+# Values for the official LocalStack Helm chart (localstack/localstack, chart 0.7.1).
+# Install:
+#   helm upgrade --install localstack localstack/localstack --version 0.7.1 \
+#     --namespace sentinel -f infra/helm-values/localstack.yaml
+# The auth token comes from the "localstack-auth" Secret, which is created by hand and never committed.
+
+image:
+  repository: localstack/localstack
+  tag: "2026.10.0"            # pinned (the chart default is "latest")
+
+service:
+  type: ClusterIP             # only reachable inside the cluster (the chart default exposes a NodePort)
+
+extraEnvVars:
+  - name: LOCALSTACK_AUTH_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: localstack-auth
+        key: token
+  - name: SERVICES
+    value: s3,sqs,secretsmanager
+
+# Same job as localstack/init/01-create-resources.sh in Compose:
+# runs when LocalStack is ready and creates the receipts bucket.
+enableStartupScripts: true
+startupScriptContent: |
+  #!/bin/bash
+  set -euo pipefail
+  awslocal s3 mb s3://sentinel-receipts
+  echo "Sentinel: created S3 bucket sentinel-receipts"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
