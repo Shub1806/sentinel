@@ -1,0 +1,38 @@
+# Values for the orders service (chart: infra/charts/sentinel-service).
+image:
+  repository: sentinel/orders
+  tag: dev
+
+port: 8080
+
+env:
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+  # orders-db-rw = the read-write Service created by the CloudNativePG operator
+  DB_URL: jdbc:postgresql://orders-db-rw:5432/orders
+
+# Username and password come from the Secret the operator generated. Nothing secret in this file.
+secretEnv:
+  - name: DB_USER
+    secretName: orders-db-app
+    key: username
+  - name: DB_PASSWORD
+    secretName: orders-db-app
+    key: password
+
+# Spring Boot's built-in Kubernetes health endpoints (enabled in application.properties).
+probes:
+  startup:
+    path: /actuator/health/liveness
+  liveness:
+    path: /actuator/health/liveness
+  readiness:
+    path: /actuator/health/readiness
+
+# Java needs more memory than Python or Node. The heap is capped at 75% of the limit
+# (Dockerfile), which leaves the rest for the JVM's own needs.
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    memory: 768Mi

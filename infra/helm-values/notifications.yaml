@@ -1,0 +1,13 @@
+# Values for the notifications service (chart: infra/charts/sentinel-service).
+image:
+  repository: sentinel/notifications
+  tag: dev
+
+port: 8002
+
+env:
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+  AWS_ENDPOINT_URL: http://localstack:4566
+  # LocalStack accepts any credentials; these are not secrets.
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test

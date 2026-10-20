@@ -1,0 +1,10 @@
+# Values for the payments service (chart: infra/charts/sentinel-service).
+image:
+  repository: sentinel/payments
+  tag: dev
+
+port: 8001
+
+env:
+  # Same namespace, so the short Service name works.
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092

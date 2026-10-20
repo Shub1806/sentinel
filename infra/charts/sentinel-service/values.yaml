@@ -1,0 +1,43 @@
+# Defaults for every Sentinel service.
+# Each service overrides only what it needs in infra/helm-values/<service>.yaml.
+
+image:
+  repository: ""            # required, e.g. sentinel/payments
+  tag: ""                   # required, e.g. dev
+  pullPolicy: IfNotPresent  # use the image already loaded into the cluster
+
+replicaCount: 1
+port: 8080
+
+# Plain (non-secret) settings. Stored in a ConfigMap, given to the app as environment variables.
+env: {}
+
+# Settings read from existing Kubernetes Secrets. Example:
+#   - name: DB_PASSWORD      (environment variable name in the app)
+#     secretName: orders-db-app
+#     key: password
+secretEnv: []
+
+probes:
+  startup:                  # "has it finished starting?" Liveness and readiness wait for this.
+    path: /healthz
+    periodSeconds: 5
+    failureThreshold: 24    # 24 x 5 s = up to 2 minutes to start
+  liveness:                 # "is it stuck?" Fails 3 times in a row -> restart
+    path: /healthz
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:                # "can it take work now?" No -> no traffic, but no restart
+    path: /readyz
+    periodSeconds: 5
+    failureThreshold: 3
+  timeoutSeconds: 2
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+terminationGracePeriodSeconds: 30   # time to finish work after SIGTERM before being killed
