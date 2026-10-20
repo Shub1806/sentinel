@@ -1,0 +1,28 @@
+# Postgres for the orders service, managed by the CloudNativePG operator.
+# Requires the operator (installed once):
+#   helm upgrade --install cnpg cnpg/cloudnative-pg --version 0.29.0 \
+#     --namespace cnpg-system --create-namespace
+#
+# What the operator creates from this file:
+#   pod      orders-db-1     the Postgres server
+#   service  orders-db-rw    the address apps connect to (read-write)
+#   secret   orders-db-app   username + generated password for the "orders" database
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: orders-db
+  namespace: sentinel
+spec:
+  instances: 1            # production would use 3 (1 primary + 2 standbys); 1 is enough on a laptop
+  bootstrap:
+    initdb:
+      database: orders    # create this database...
+      owner: orders       # ...owned by this user; the password is generated and stored in a Secret
+  storage:
+    size: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
