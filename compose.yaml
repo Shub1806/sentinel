@@ -73,6 +73,24 @@ services:
     command: -c "rpk topic create order.created payment.done --partitions 3 -X brokers=redpanda:9092 || true"
     restart: "no"  
 
+  localstack:
+    # Pinned version (LocalStack uses year.month versions). Requires a free account token.
+    image: localstack/localstack:2026.10.0
+    container_name: sentinel-localstack
+    environment:
+      LOCALSTACK_AUTH_TOKEN: ${LOCALSTACK_AUTH_TOKEN:?Set LOCALSTACK_AUTH_TOKEN in .env}
+      # Only start the AWS services we use, which saves memory
+      SERVICES: s3,sqs,secretsmanager
+    ports:
+      - "4566:4566"     # one port for all emulated AWS services
+    volumes:
+      - ./localstack/init:/etc/localstack/init/ready.d:ro
+    healthcheck:
+            test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4566/_localstack/health', timeout=3)"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+
 volumes:
   postgres-data:
   redpanda-data:
