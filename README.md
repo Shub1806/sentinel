@@ -6,6 +6,17 @@ after human approval, and drafts the post-mortem.
 
 > 🚧 Work in progress.
 
+## Quick start (Kubernetes)
+
+Requirements: Docker Desktop, k3d, kubectl, helm, terraform, and a free LocalStack token
+(`LOCALSTACK_AUTH_TOKEN` in `.env`, see `.env.example`).
+
+```bash
+./scripts/up.sh          # images -> k3d cluster -> Postgres, Redpanda, LocalStack -> 3 services
+./scripts/smoke-test.sh  # places an order and waits for its receipt in S3
+./scripts/down.sh        # removes everything
+```
+
 ## Planned stack
 
 - **Services:** orders (Java / Spring Boot), payments (Python / FastAPI), notifications (Node.js / TypeScript)
