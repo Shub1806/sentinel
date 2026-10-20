@@ -41,3 +41,10 @@ resources:
     memory: 256Mi
 
 terminationGracePeriodSeconds: 30   # time to finish work after SIGTERM before being killed
+
+# HorizontalPodAutoscaler: add/remove pods based on CPU. Off unless a service turns it on.
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70   # % of the pod's CPU *request*

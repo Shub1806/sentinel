@@ -8,3 +8,11 @@ port: 8001
 env:
   # Same namespace, so the short Service name works.
   KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+
+
+# Scale on CPU, up to 3 pods: order.created has 3 partitions, and a 4th consumer would sit idle.
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
