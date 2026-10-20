@@ -1,0 +1,23 @@
+# Local Kubernetes cluster for Sentinel.
+# Create:  k3d cluster create --config infra/k3d/cluster.yaml
+# Pause:   k3d cluster stop sentinel     (frees memory, keeps everything)
+# Resume:  k3d cluster start sentinel
+# Delete:  k3d cluster delete sentinel
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: sentinel
+servers: 1      # one node is enough on a 16 GB laptop; it runs both Kubernetes and our apps
+agents: 0
+# Pinned so the cluster matches your kubectl (v1.36) and doesn't change under you.
+image: rancher/k3s:v1.36.4-k3s1
+options:
+  k3s:
+    extraArgs:
+      # k3s ships with the Traefik web router; we don't need it yet, so skip it to save memory.
+      - arg: "--disable=traefik"
+        nodeFilters:
+          - "server:*"
+  kubeconfig:
+    updateDefaultKubeconfig: true   # let kubectl talk to this cluster
+    switchCurrentContext: true      # ...and make it the active one
