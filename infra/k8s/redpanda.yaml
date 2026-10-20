@@ -1,0 +1,118 @@
+# Single-node Redpanda for local development (same settings as compose.yaml).
+# The official Helm chart targets production (3 brokers, TLS, 20Gi disks), too heavy for a laptop.
+
+# A "headless" Service (clusterIP: None) gives the pod a stable DNS name:
+# redpanda-0.redpanda.sentinel.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: redpanda
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: redpanda
+  ports:
+    - name: kafka
+      port: 9092
+    - name: admin
+      port: 9644
+    - name: rpc
+      port: 33145
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: redpanda
+spec:
+  serviceName: redpanda
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redpanda
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:v26.1.9
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=1
+            - --memory=1G
+            - --kafka-addr=internal://0.0.0.0:9092
+            - --advertise-kafka-addr=internal://redpanda-0.redpanda.sentinel.svc.cluster.local:9092
+            - --rpc-addr=0.0.0.0:33145
+            - --advertise-rpc-addr=redpanda-0.redpanda.sentinel.svc.cluster.local:33145
+          ports:
+            - name: kafka
+              containerPort: 9092
+            - name: admin
+              containerPort: 9644
+            - name: rpc
+              containerPort: 33145
+          resources:
+            requests:            # what the scheduler reserves for this pod
+              cpu: 250m          # a quarter of one CPU core
+              memory: 1280Mi
+            limits:              # the hard ceiling: going above it gets the pod OOM-killed
+              memory: 1536Mi
+          readinessProbe:        # "ready for traffic?" (the Admin API says so)
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:         # "still alive?" Fails 6 times in a row -> restart the pod
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+  # Each pod gets its own disk, kept even if the pod is deleted and re-created.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+---
+# Creates the topics once. If Redpanda isn't ready yet, the Job fails and Kubernetes retries it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-create-topics
+  namespace: sentinel
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: rpk
+          image: docker.redpanda.com/redpandadata/redpanda:v26.1.9
+          env:
+            - name: BROKERS
+              value: redpanda-0.redpanda.sentinel.svc.cluster.local:9092
+          command: ["/bin/sh", "-c"]
+          # "create" fails harmlessly if the topics already exist;
+          # "describe" then succeeds only if both topics really exist.
+          args:
+            - >-
+              rpk topic create order.created payment.done --partitions 3 -X brokers=$BROKERS;
+              rpk topic describe order.created payment.done -X brokers=$BROKERS > /dev/null
