@@ -1,3 +1,4 @@
+import { collectDefaultMetrics } from 'prom-client'
 import { Consumer, MessagesStreamFallbackModes, MessagesStreamModes, stringDeserializers } from '@platformatic/kafka'
 import { type Config, loadConfig } from './config.ts'
 import { handleMessage } from './handler.ts'
@@ -14,6 +15,8 @@ try {
   process.exit(1)
 }
 
+// Node.js runtime metrics for /metrics: memory, CPU, event-loop delay, garbage collection.
+collectDefaultMetrics()
 const store = new S3ReceiptStore(config)
 const state: HealthState = { alive: true, ready: false }
 const server = startHealthServer(state, config.port)

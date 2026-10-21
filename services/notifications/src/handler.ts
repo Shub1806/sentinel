@@ -1,12 +1,13 @@
 import { PaymentDone } from './events.ts'
 import { log } from './logger.ts'
+import { type HandleResult, messageErrors, messagesProcessed, processingSeconds } from './metrics.ts'
 import { buildReceipt, receiptKey } from './receipt.ts'
 import type { ReceiptStore } from './receipt-store.ts'
 
-export type HandleResult = 'receipt_saved' | 'skipped_failed_payment' | 'skipped_invalid'
+export type { HandleResult } from './metrics.ts'
 
 /**
- * Processes one payment.done message.
+ * Processes one payment.done message and records metrics about it.
  * Invalid messages are skipped (logged), never crash the service.
  * If saving to S3 fails, the error is thrown so the message is NOT committed and gets retried.
  */
@@ -14,6 +15,24 @@ export async function handleMessage(
   raw: string | undefined,
   store: ReceiptStore,
   now: () => Date = () => new Date(),
+): Promise<HandleResult> {
+  const stopTimer = processingSeconds.startTimer()
+  try {
+    const result = await processMessage(raw, store, now)
+    messagesProcessed.inc({ result })
+    return result
+  } catch (error) {
+    messageErrors.inc()
+    throw error
+  } finally {
+    stopTimer()
+  }
+}
+
+async function processMessage(
+  raw: string | undefined,
+  store: ReceiptStore,
+  now: () => Date,
 ): Promise<HandleResult> {
   let data: unknown
   try {
