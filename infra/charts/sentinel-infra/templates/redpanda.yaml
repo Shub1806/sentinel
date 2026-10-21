@@ -118,6 +118,7 @@ spec:
               rpk topic describe order.created payment.done -X brokers=$BROKERS > /dev/null
 ---
 # Turns on consumer-lag metrics (redpanda_kafka_consumer_group_lag_sum / _max).
+# Also sets the lag calculation interval to 15 s (Redpanda's default is 60 s, too slow to see short bursts).
 # Redpanda's default is only "group" and "partition".
 # This is a Helm hook, not a plain Job: a plain Job can't be changed after it's created,
 # but a hook is re-created on every install and upgrade, so the setting is always re-applied.
@@ -137,8 +138,12 @@ spec:
       containers:
         - name: rpk
           image: docker.redpanda.com/redpandadata/redpanda:v26.1.9
+          env:
+            - name: ADMIN
+              value: redpanda-0.redpanda.sentinel.svc.cluster.local:9644
           command: ["/bin/sh", "-c"]
+          # 1) turn on lag metrics  2) recalculate lag every 15 s (default 60 s), matching Prometheus' scrape interval
           args:
             - >-
-              rpk cluster config set enable_consumer_group_metrics '["group","partition","consumer_lag"]'
-              -X admin.hosts=redpanda-0.redpanda.sentinel.svc.cluster.local:9644
+              rpk cluster config set enable_consumer_group_metrics '["group","partition","consumer_lag"]' -X admin.hosts=$ADMIN &&
+              rpk cluster config set consumer_group_lag_collection_interval_sec 15 -X admin.hosts=$ADMIN
