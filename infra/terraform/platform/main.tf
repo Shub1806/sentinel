@@ -70,5 +70,5 @@ resource "helm_release" "apps" {
   ]
 
 
-  depends_on = [helm_release.infra, helm_release.localstack]
+    depends_on = [helm_release.infra, helm_release.localstack, helm_release.monitoring]
 }

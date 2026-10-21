@@ -48,3 +48,11 @@ autoscaling:
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 70   # % of the pod's CPU *request*
+
+
+# Prometheus scraping. When enabled, the chart creates a ServiceMonitor that tells
+# Prometheus to collect metrics from this service's "http" port at the given path.
+metrics:
+  enabled: false
+  path: /metrics
+  interval: 15s
