@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.metrics import PAYMENT_STATUSES
 
 
 class FakeWorker:
@@ -40,3 +41,15 @@ def test_not_ready_until_connected():
 def test_unhealthy_when_worker_crashes():
     with make_client(crash=True) as client:
         assert client.get("/healthz").status_code == 503
+
+
+def test_metrics_endpoint_serves_every_payment_status():
+    with make_client() as client:
+        response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    # Every status must exist from the start (at 0), even before any payment of that kind.
+    assert set(PAYMENT_STATUSES) == {"succeeded", "failed"}
+    for status in PAYMENT_STATUSES:
+        assert f'payments_processed_total{{status="{status}"}}' in response.text

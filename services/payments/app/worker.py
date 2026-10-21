@@ -9,6 +9,7 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.metrics import INVALID_MESSAGES, PAYMENTS_PROCESSED, PROCESSING_SECONDS
 from app.models import OrderCreated, PaymentDone
 from app.payment_logic import charge
 
@@ -30,20 +31,27 @@ class PaymentsWorker:
             order = OrderCreated.model_validate_json(raw)
         except ValidationError as exc:
             # A bad message must not stop the whole service. Log it and move on.
+            INVALID_MESSAGES.inc()
             log.warning("skipping invalid order.created message", extra={"errors": exc.errors()})
             return None
 
-        if self.settings.processing_delay_ms:
-            await asyncio.sleep(self.settings.processing_delay_ms / 1000)
+        # Measures charging plus publishing, including any artificial delay.
+        with PROCESSING_SECONDS.time():
+            if self.settings.processing_delay_ms:
+                await asyncio.sleep(self.settings.processing_delay_ms / 1000)
 
-        payment = charge(
-            order, max_amount_cents=self.settings.max_amount_cents, now=datetime.now(UTC)
-        )
-        await producer.send_and_wait(
-            self.settings.output_topic,
-            value=payment.model_dump_json().encode(),
-            key=str(payment.order_id).encode(),
-        )
+            payment = charge(
+                order, max_amount_cents=self.settings.max_amount_cents, now=datetime.now(UTC)
+            )
+            await producer.send_and_wait(
+                self.settings.output_topic,
+                value=payment.model_dump_json().encode(),
+                key=str(payment.order_id).encode(),
+            )
+
+        # Count only after publishing succeeded. mode="json" gives the status exactly
+        # as it appears in the payment.done event.
+        PAYMENTS_PROCESSED.labels(status=payment.model_dump(mode="json")["status"]).inc()
         log.info(
             "payment processed",
             extra={

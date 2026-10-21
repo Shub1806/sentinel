@@ -1,4 +1,4 @@
-"""FastAPI app: runs the worker in the background and serves health checks."""
+"""FastAPI app: runs the worker in the background and serves health checks and metrics."""
 
 import asyncio
 import logging
@@ -6,6 +6,7 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Response
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.config import Settings, load_settings
 from app.logging_setup import configure_logging
@@ -55,6 +56,11 @@ def create_app(
             response.status_code = 503
             return {"status": "not ready"}
         return {"status": "ready"}
+
+    @app.get("/metrics")
+    async def metrics() -> Response:
+        """Prometheus scrapes this every 15 seconds (see the ServiceMonitor)."""
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     return app
 
