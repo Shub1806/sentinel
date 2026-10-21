@@ -17,11 +17,22 @@ fi
 export TF_VAR_localstack_auth_token="$LOCALSTACK_AUTH_TOKEN"
 
 step "1/4 Building service images"
+# Each image is tagged with the first 12 characters of its content ID.
+# Same code -> same tag -> nothing restarts. Changed code -> new tag -> Kubernetes rolls out new pods.
 images=()
+tag_map=""
 for s in "${SERVICES[@]}"; do
-  docker build -q -t "sentinel/$s:dev" "$ROOT/services/$s"
-  images+=("sentinel/$s:dev")
+  # --provenance=false: Docker otherwise adds a build-time note to the image, which
+  # changes the ID on every build even when the code is identical.
+  id="$(docker build -q --provenance=false -t "sentinel/$s:dev" "$ROOT/services/$s")"
+  tag="${id#sha256:}"
+  tag="${tag:0:12}"
+  docker tag "sentinel/$s:dev" "sentinel/$s:$tag"
+  images+=("sentinel/$s:$tag")
+  tag_map+="${tag_map:+,}$s=\"$tag\""
+  printf '%-14s %s\n' "$s" "$tag"
 done
+export TF_VAR_image_tags="{$tag_map}"
 
 step "2/4 Creating the cluster (Terraform: cluster stack)"
 terraform -chdir="$ROOT/infra/terraform/cluster" init -input=false > /dev/null

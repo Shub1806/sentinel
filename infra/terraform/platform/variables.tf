@@ -15,3 +15,9 @@ variable "localstack_auth_token" {
   type        = string
   sensitive   = true # Terraform hides it in plan/apply output
 }
+
+variable "image_tags" {
+  description = "Image tag per service (orders, payments, notifications). scripts/up.sh sets these from each image's content ID."
+  type        = map(string)
+  default     = {}
+}

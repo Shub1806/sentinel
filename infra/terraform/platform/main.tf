@@ -62,5 +62,13 @@ resource "helm_release" "apps" {
   values    = [file("${local.values_dir}/${each.key}.yaml")]
   timeout   = 300
 
+  set = [
+    {
+      name  = "image.tag"
+      value = lookup(var.image_tags, each.key, "dev")
+    }
+  ]
+
+
   depends_on = [helm_release.infra, helm_release.localstack]
 }
