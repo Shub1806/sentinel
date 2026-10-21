@@ -24,6 +24,11 @@ defaultRules:
     # Docker Desktop's VM takes its time from the Mac, not NTP, so the kernel always
     # reports "not synchronised". NodeClockSkewDetected still alerts on real clock drift.
     NodeClockNotSynchronising: true
+    # On Docker Desktop, rule groups sometimes run twice at the same timestamp
+    # ("different value but same timestamp" in the Prometheus log), and Prometheus
+    # counts the catch-up as a missed run. CPU is idle and every group runs in ms,
+    # so this alert only produces false alarms here.
+    PrometheusMissingRuleEvaluations: true
 
 prometheus:
   prometheusSpec:
