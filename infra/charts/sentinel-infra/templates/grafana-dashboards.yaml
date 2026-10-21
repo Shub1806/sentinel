@@ -1,0 +1,10 @@
+{{- /* Grafana dashboards as code. Grafana's dashboard sidecar loads any ConfigMap labelled
+       grafana_dashboard=1, in any namespace. Every JSON file in dashboards/ goes in here. */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentinel-dashboards
+  labels:
+    grafana_dashboard: "1"
+data:
+{{ (.Files.Glob "dashboards/*.json").AsConfig | indent 2 }}
