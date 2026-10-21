@@ -1,0 +1,69 @@
+# kube-prometheus-stack (chart 92.10.1) for a single-node local k3d cluster.
+# Installed by Terraform (infra/terraform/platform/monitoring.tf).
+
+# k3s runs the scheduler, controller-manager, proxy and etcd inside one process and
+# doesn't expose them separately. Without this, Prometheus would report them "down"
+# and fire false alerts.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+kubeEtcd:
+  enabled: false
+defaultRules:
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeProxy: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    windows: false
+  disabled:
+    # Docker Desktop's VM takes its time from the Mac, not NTP, so the kernel always
+    # reports "not synchronised". NodeClockSkewDetected still alerts on real clock drift.
+    NodeClockNotSynchronising: true
+
+prometheus:
+  prometheusSpec:
+    # By default Prometheus only watches monitoring configs made by this chart.
+    # These let it pick up the ones our own services will add, in any namespace.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeInterval: 15s
+    retention: 2d          # keep 2 days of data: plenty for local dev
+    resources:
+      requests:
+        cpu: 100m
+        memory: 400Mi
+      limits:
+        memory: 1Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+
+grafana:
+  # No adminPassword here on purpose: the Grafana chart generates a random one
+  # and stores it in a Kubernetes Secret.
+  defaultDashboardsTimezone: browser
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      # 256Mi caused OOMKills at startup (6 restarts); Grafana needs more while loading dashboards.
+      memory: 512Mi
+
+prometheus-node-exporter:
+  # Docker-based nodes (like k3d's) can't support this mount; leaving it on stops the exporter starting.
+  hostRootFsMount:
+    enabled: false
