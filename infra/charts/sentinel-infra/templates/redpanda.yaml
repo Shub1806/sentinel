@@ -116,3 +116,29 @@ spec:
             - >-
               rpk topic create order.created payment.done --partitions 3 -X brokers=$BROKERS;
               rpk topic describe order.created payment.done -X brokers=$BROKERS > /dev/null
+---
+# Turns on consumer-lag metrics (redpanda_kafka_consumer_group_lag_sum / _max).
+# Redpanda's default is only "group" and "partition".
+# This is a Helm hook, not a plain Job: a plain Job can't be changed after it's created,
+# but a hook is re-created on every install and upgrade, so the setting is always re-applied.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-configure
+  namespace: sentinel
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation   # keep the last run visible until the next one
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: rpk
+          image: docker.redpanda.com/redpandadata/redpanda:v26.1.9
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              rpk cluster config set enable_consumer_group_metrics '["group","partition","consumer_lag"]'
+              -X admin.hosts=redpanda-0.redpanda.sentinel.svc.cluster.local:9644

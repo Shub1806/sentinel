@@ -1,0 +1,17 @@
+# Tells Prometheus to scrape Redpanda's public metrics (including consumer-group lag)
+# from the "admin" port (9644) of the redpanda Service.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redpanda
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: redpanda
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redpanda
+  endpoints:
+    - port: admin
+      path: /public_metrics
+      interval: 15s

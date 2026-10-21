@@ -37,7 +37,7 @@ resource "helm_release" "infra" {
     }
   ]
 
-  depends_on = [helm_release.cnpg] # the Postgres "Cluster" type must exist first
+  depends_on = [helm_release.cnpg, helm_release.monitoring] # the "Cluster" and "ServiceMonitor" types must exist first
 }
 
 resource "helm_release" "localstack" {
@@ -70,5 +70,5 @@ resource "helm_release" "apps" {
   ]
 
 
-    depends_on = [helm_release.infra, helm_release.localstack, helm_release.monitoring]
+  depends_on = [helm_release.infra, helm_release.localstack, helm_release.monitoring]
 }
