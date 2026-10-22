@@ -9,6 +9,7 @@ have enough traffic: `kubectl apply -f infra/chaos/loadgen.yaml`.
 | 2 | Database outage | `database-outage.sh` |
 | 3 | S3 outage | `s3-outage.sh` |
 | 4 | Slow consumer: payments falls behind | `slow-consumer.sh` |
+| 5 | Poison messages: a producer sends bad events | `poison-messages.sh` |
 
 ## 1. Bad deploy: payments crash-loops
 
@@ -103,3 +104,24 @@ rollout; smoke test passed.
 
 **Lesson:** CPU does not tell you whether a consumer keeps up. Scaling consumers on lag (for example with KEDA) would
 add pods here, up to one per partition (3).
+
+## 5. Poison messages: a producer sends bad events
+
+**Inject:** `./scripts/chaos/poison-messages.sh inject` writes straight to the topics with `rpk`, bypassing orders:
+3 bad messages to `order.created` (not JSON; wrong shape; right shape with a negative amount and a lowercase currency)
+and 2 to `payment.done` (not JSON; wrong shape). All use the key `chaos-poison`.
+
+**Expected (observed)**
+
+| Signal | Evidence |
+|---|---|
+| Alerts | `InvalidMessagesReceived` for `payments` and for `notifications`, firing within 1 min (no wait period) |
+| Metrics | `payments_invalid_messages_total` +3; `notifications_messages_processed_total{result="skipped_invalid"}` +2; lag stays 0; no restarts; orders unaffected |
+| Logs | `{namespace="sentinel"} \|= "skipping invalid"`: 5 WARN lines. payments lists the pydantic errors (`json_invalid`, `missing`, `greater_than_equal`, `string_pattern_mismatch`); notifications lists the schema errors (`event_id: Invalid input: expected string, received undefined` ...) or `not JSON` |
+| Traces | TraceQL `{ status = error }`: 5 one-span traces, `order.created process` (3) and `payment.done process` (2), each a few ms |
+
+**Root cause:** something other than orders wrote invalid events. The consumers log, count and skip each one, so
+nothing stops; the alert tells you to find the producer.
+
+**Recover:** nothing to undo (`recover` only prints this). The bad messages are committed and skipped;
+`InvalidMessagesReceived` clears 10 minutes after the last one.
