@@ -9,6 +9,9 @@ const schema = z.object({
   // Set to http://localhost:4566 for LocalStack. Leave empty for real AWS.
   AWS_ENDPOINT_URL: z.url().optional(),
   PORT: z.coerce.number().int().min(1).max(65535).default(8002),
+  // Where to send traces (Tempo). Leave empty to turn tracing off.
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: z.url().optional(),
+  OTEL_SERVICE_NAME: z.string().default('notifications'),
 })
 
 export interface Config {
@@ -19,6 +22,8 @@ export interface Config {
   awsRegion: string
   awsEndpointUrl: string | undefined
   port: number
+  otlpTracesEndpoint: string | undefined
+  serviceName: string
 }
 
 export class ConfigError extends Error {}
@@ -40,5 +45,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     awsRegion: c.AWS_REGION,
     awsEndpointUrl: c.AWS_ENDPOINT_URL,
     port: c.PORT,
+    otlpTracesEndpoint: c.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+    serviceName: c.OTEL_SERVICE_NAME,
   }
 }

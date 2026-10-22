@@ -9,6 +9,8 @@ describe('loadConfig', () => {
     expect(c.receiptsBucket).toBe('sentinel-receipts')
     expect(c.awsEndpointUrl).toBeUndefined()
     expect(c.port).toBe(8002)
+    expect(c.otlpTracesEndpoint).toBeUndefined() // tracing off unless configured
+    expect(c.serviceName).toBe('notifications')
   })
 
   it('splits a comma-separated broker list', () => {
@@ -27,6 +29,9 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ KAFKA_BOOTSTRAP_SERVERS: 'x:1', PORT: 'abc' })).toThrow(/PORT/)
     expect(() => loadConfig({ KAFKA_BOOTSTRAP_SERVERS: 'x:1', AWS_ENDPOINT_URL: 'not a url' })).toThrow(
       /AWS_ENDPOINT_URL/,
+    )
+    expect(() => loadConfig({ KAFKA_BOOTSTRAP_SERVERS: 'x:1', OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'nope' })).toThrow(
+      /OTEL_EXPORTER_OTLP_TRACES_ENDPOINT/,
     )
   })
 })
