@@ -58,22 +58,23 @@ the failures. That is intended (the incident used real error budget), but wait f
 **Inject:** `./scripts/chaos/s3-outage.sh inject` scales LocalStack to 0. LocalStack keeps S3 in memory, so existing
 receipts are lost; the bucket is created again when it starts.
 
-**What notifications does:** a failed S3 write throws, the consumer loop stops, `/healthz` turns 503 and Kubernetes
-restarts the pod (about every 2 minutes). Each new pod fails on the same uncommitted message and stops again.
+**What notifications does:** it retries the failed message in-process, pausing 1 s, 2 s, 4 s ... up to 30 s between
+tries, and commits it only once the receipt is saved. The pod stays up and ready, so its error count stays visible.
 
 **Expected (observed)**
 
 | Signal | Evidence |
 |---|---|
-| Alerts | `PodRestarted` (about 2 min); `ConsumerLagHigh` for `notifications` (about 15 min); `KubePodNotReady`, `KubeDeploymentReplicasMismatch` (15 min); `KubePodCrashLooping` pending. **`NotificationErrors` does not fire** |
-| Metrics | notifications lag grows by about 120 per minute (the order rate); orders and payments unaffected; `increase(notifications_message_errors_total[10m])` = **0**: the pod is never ready, so Prometheus doesn't scrape it, and each restart resets the counter |
-| Logs | **The only place with the cause:** notifications ERROR `worker stopped with an error`, `connect ECONNREFUSED <localstack ip>:4566`, once per restart |
-| Traces | `payment.done process` and `S3 PutObject` spans with an error status (one per restart) |
+| Alerts | `NotificationErrors` (about 6 min: pending at once, firing after 5 min); `ConsumerLagHigh` for `notifications` once lag stays above 1000 for 5 min (about 13 min) |
+| Metrics | `notifications_message_errors_total` climbs (about 2 per minute once the pause reaches 30 s); notifications lag grows by about 120 per minute (the order rate); no restarts; orders and payments unaffected |
+| Logs | notifications WARN `receipt not saved, will retry` with `error: connect ECONNREFUSED <localstack ip>:4566`, `failures` and `retry_in_ms` |
+| Traces | One `payment.done process` + `S3 PutObject` error span pair per retry |
 
 **Root cause:** S3 is unreachable. Customers are not affected; receipts are delayed.
 
-**Recover:** `./scripts/chaos/s3-outage.sh recover`. notifications only resumes after its current restart back-off
-(up to 5 minutes; `kubectl rollout restart deploy/notifications` skips it), then drains the backlog in under a minute.
+**Recover:** `./scripts/chaos/s3-outage.sh recover`. The next retry (at most 30 s later) succeeds and the backlog
+drains on its own; no restart needed.
 
-**Weakness found:** one failed write takes the whole consumer down, which hides the error from metrics and adds
-restart back-off to the recovery time. Fix: retry inside the process with back-off, keep the pod alive and visible.
+**History:** the first run (before the retry) showed a real weakness: one failed write stopped the consumer, the pod
+restarted every 2 minutes and was never ready, Prometheus counted **0** errors, `NotificationErrors` never fired, the
+cause was only in the logs, and recovery waited out up to 5 minutes of restart back-off. The in-process retry fixed all of it.
