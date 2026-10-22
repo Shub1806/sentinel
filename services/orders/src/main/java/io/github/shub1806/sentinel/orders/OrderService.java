@@ -15,11 +15,14 @@ public class OrderService {
     private final CustomerOrderRepository orders;
     private final OutboxEventRepository outbox;
     private final ObjectMapper json;
+    private final OutboxTracing tracing;
 
-    public OrderService(CustomerOrderRepository orders, OutboxEventRepository outbox, ObjectMapper json) {
+    public OrderService(
+            CustomerOrderRepository orders, OutboxEventRepository outbox, ObjectMapper json, OutboxTracing tracing) {
         this.orders = orders;
         this.outbox = outbox;
         this.json = json;
+        this.tracing = tracing;
     }
 
     /**
@@ -52,7 +55,8 @@ public class OrderService {
                 order.getId(),
                 ORDER_CREATED_TOPIC,
                 json.writeValueAsString(event),
-                now));
+                now,
+                tracing.currentTraceparent()));
 
         return order;
     }

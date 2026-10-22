@@ -33,16 +33,22 @@ public class OutboxEvent {
     @Column(name = "published_at")
     private Instant publishedAt;
 
+    // W3C traceparent of the request that created this event (null when nothing was traced).
+    @Column(length = 55)
+    private String traceparent;
+
     protected OutboxEvent() {
         // required by JPA
     }
 
-    public OutboxEvent(UUID id, UUID aggregateId, String topic, String payload, Instant createdAt) {
+    public OutboxEvent(
+            UUID id, UUID aggregateId, String topic, String payload, Instant createdAt, String traceparent) {
         this.id = id;
         this.aggregateId = aggregateId;
         this.topic = topic;
         this.payload = payload;
         this.createdAt = createdAt;
+        this.traceparent = traceparent;
     }
 
     public void markPublished(Instant when) {
@@ -71,5 +77,9 @@ public class OutboxEvent {
 
     public Instant getPublishedAt() {
         return publishedAt;
+    }
+
+    public String getTraceparent() {
+        return traceparent;
     }
 }

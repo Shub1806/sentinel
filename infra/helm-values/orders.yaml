@@ -9,6 +9,8 @@ env:
   KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
   # orders-db-rw = the read-write Service created by the CloudNativePG operator
   DB_URL: jdbc:postgresql://orders-db-rw:5432/orders
+  # Send traces to Tempo (OTLP over HTTP).
+  MANAGEMENT_OPENTELEMETRY_TRACING_EXPORT_OTLP_ENDPOINT: http://tempo.tracing.svc.cluster.local:4318/v1/traces
 
 # Username and password come from the Secret the operator generated. Nothing secret in this file.
 secretEnv:

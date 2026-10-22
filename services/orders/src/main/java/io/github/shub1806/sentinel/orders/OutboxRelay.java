@@ -1,5 +1,7 @@
 package io.github.shub1806.sentinel.orders;
 
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -21,6 +23,7 @@ public class OutboxRelay {
     private final OutboxEventRepository outbox;
     private final KafkaTemplate<String, String> kafka;
     private final TransactionTemplate tx;
+    private final OutboxTracing tracing;
     private final boolean enabled;
     private final int batchSize;
 
@@ -28,11 +31,13 @@ public class OutboxRelay {
             OutboxEventRepository outbox,
             KafkaTemplate<String, String> kafka,
             PlatformTransactionManager transactionManager,
+            OutboxTracing tracing,
             @Value("${outbox.relay.enabled:true}") boolean enabled,
             @Value("${outbox.relay.batch-size:100}") int batchSize) {
         this.outbox = outbox;
         this.kafka = kafka;
         this.tx = new TransactionTemplate(transactionManager);
+        this.tracing = tracing;
         this.enabled = enabled;
         this.batchSize = batchSize;
     }
@@ -55,8 +60,7 @@ public class OutboxRelay {
         Integer published = tx.execute(status -> {
             List<OutboxEvent> batch = outbox.lockNextBatch(batchSize);
             for (OutboxEvent event : batch) {
-                // .join() waits until Redpanda confirms it stored the message.
-                kafka.send(event.getTopic(), event.getAggregateId().toString(), event.getPayload()).join();
+                send(event);
                 event.markPublished(Instant.now().truncatedTo(ChronoUnit.MICROS));
             }
             return batch.size();
@@ -66,5 +70,19 @@ public class OutboxRelay {
             log.info("outbox relay published {} event(s)", count);
         }
         return count;
+    }
+
+    /** Sends one event inside the trace that created it, so the message carries that trace onward. */
+    private void send(OutboxEvent event) {
+        Span span = tracing.startPublishSpan(event.getTraceparent(), event.getTopic());
+        try (Tracer.SpanInScope ignored = tracing.inScope(span)) {
+            // .join() waits until Redpanda confirms it stored the message.
+            kafka.send(event.getTopic(), event.getAggregateId().toString(), event.getPayload()).join();
+        } catch (RuntimeException e) {
+            span.error(e);
+            throw e;
+        } finally {
+            span.end();
+        }
     }
 }
