@@ -61,25 +61,36 @@ grafana:
   # and stores it in a Kubernetes Secret.
   defaultDashboardsTimezone: browser
   # Loki (logging namespace) and Tempo (tracing namespace). Fixed uids let dashboards and links refer to them.
+  # "$$" keeps Grafana from reading ${...} as an environment variable when it loads these settings.
   additionalDataSources:
     - name: Loki
       type: loki
       uid: loki
       url: http://loki.logging.svc.cluster.local:3100
       access: proxy
+      jsonData:
+        # A trace id in a log line becomes a "View trace" link to Tempo.
+        # orders logs "traceId"; payments and notifications log "trace_id".
+        derivedFields:
+          - name: TraceID
+            matcherType: regex
+            matcherRegex: '"(?:traceId|trace_id)":\s*"([0-9a-f]{32})"'
+            url: '$${__value.raw}'
+            datasourceUid: tempo
+            urlDisplayLabel: View trace
     - name: Tempo
       type: tempo
       uid: tempo
       url: http://tempo.tracing.svc.cluster.local:3200
       access: proxy
-  resources:
-    requests:
-      cpu: 50m
-      memory: 256Mi
-    limits:
-      # 256Mi caused OOMKills at startup (6 restarts); Grafana needs more while loading dashboards.
-      memory: 512Mi
-
+      jsonData:
+           # Each span gets a "Logs for this span" link: every sentinel log line with the span's trace id.
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: '-5m'
+          spanEndTimeShift: '5m'
+          customQuery: true
+          query: '{namespace="sentinel"} |= "$${__trace.traceId}"'
 prometheus-node-exporter:
   # Docker-based nodes (like k3d's) can't support this mount; leaving it on stops the exporter starting.
   hostRootFsMount:
