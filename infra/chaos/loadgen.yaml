@@ -1,53 +1,55 @@
-   # A steady stream of orders for chaos tests. The SLO alerts need at least 10 requests
-   # per 5 minutes, which smoke tests alone don't reach.
-   # Start: kubectl apply -f infra/chaos/loadgen.yaml
-   # Stop:  kubectl delete -f infra/chaos/loadgen.yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: loadgen
-     namespace: sentinel
-     labels:
-       app.kubernetes.io/name: loadgen
-   spec:
-     replicas: 1
-     selector:
-       matchLabels:
-         app.kubernetes.io/name: loadgen
-     template:
-       metadata:
-         labels:
-           app.kubernetes.io/name: loadgen
-       spec:
-         securityContext:
-           runAsNonRoot: true
-           runAsUser: 65534
-           seccompProfile:
-             type: RuntimeDefault
-         containers:
-           - name: loadgen
-             image: busybox:1.37.0
-             env:
-               - name: INTERVAL_US
-                 value: "500000" # pause between orders in microseconds: 500000 = 2 orders per second
-             command: ["sh", "-c"]
-             args:
-               - |
-                 while true; do
-                   amount=$(( RANDOM % 5000 + 100 ))
-                   wget -q -O /dev/null -T 5 --header 'Content-Type: application/json' \
-                     --post-data "{\"customer_id\":\"loadgen\",\"amount_cents\":$amount,\"currency\":\"USD\"}" \
-                     http://orders:8080/orders || echo "order failed"
-                   usleep "$INTERVAL_US"
-                 done
-             resources:
-               requests:
-                 cpu: 10m
-                 memory: 8Mi
-               limits:
-                 memory: 32Mi
-             securityContext:
-               allowPrivilegeEscalation: false
-               readOnlyRootFilesystem: true
-               capabilities:
-                 drop: ["ALL"]
+# A steady stream of orders for chaos tests. The SLO alerts need at least 10 requests
+# per 5 minutes, which smoke tests alone don't reach.
+# Start: kubectl apply -f infra/chaos/loadgen.yaml
+# Stop:  kubectl delete -f infra/chaos/loadgen.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: sentinel
+  labels:
+    app.kubernetes.io/name: loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loadgen
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: loadgen
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: loadgen
+          image: busybox:1.37.0
+          env:
+            - name: INTERVAL_US
+              value: "500000" # pause between orders in microseconds: 500000 = 2 orders per second
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                amount=$(( RANDOM % 5000 + 100 ))
+                # In the background, so a slow or failing order doesn't delay the next one: real users
+                # keep arriving while the service struggles ("open loop"). -T 5 caps each request at 5 s.
+                ( wget -q -O /dev/null -T 5 --header 'Content-Type: application/json' \
+                  --post-data "{\"customer_id\":\"loadgen\",\"amount_cents\":$amount,\"currency\":\"USD\"}" \
+                  http://orders:8080/orders || echo "order failed" ) &
+                usleep "$INTERVAL_US"
+              done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
