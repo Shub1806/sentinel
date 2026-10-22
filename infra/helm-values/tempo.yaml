@@ -1,0 +1,22 @@
+# Tempo (grafana-community/tempo chart 3.1.0, Tempo 3.1.0) for a single-node local k3d cluster.
+# Installed by Terraform (infra/terraform/platform/tracing.tf).
+# One pod stores traces on its own volume. Services send OTLP to tempo.tracing:4317 (gRPC) or :4318 (HTTP).
+
+tempo:
+  reportingEnabled: false
+  # Keep 2 days of traces, the same as metrics and logs.
+  retention: 48h
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  extraEnv:
+    # Go starts collecting garbage harder before the container hits its memory limit.
+    - name: GOMEMLIMIT
+      value: 450MiB
+
+persistence:
+  enabled: true
+  size: 2Gi

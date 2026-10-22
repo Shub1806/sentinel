@@ -60,12 +60,17 @@ grafana:
   # No adminPassword here on purpose: the Grafana chart generates a random one
   # and stores it in a Kubernetes Secret.
   defaultDashboardsTimezone: browser
-  # Loki (logging namespace) for log queries. uid "loki" lets dashboards and links refer to it.
+  # Loki (logging namespace) and Tempo (tracing namespace). Fixed uids let dashboards and links refer to them.
   additionalDataSources:
     - name: Loki
       type: loki
       uid: loki
       url: http://loki.logging.svc.cluster.local:3100
+      access: proxy
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.tracing.svc.cluster.local:3200
       access: proxy
   resources:
     requests:
