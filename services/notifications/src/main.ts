@@ -6,6 +6,7 @@ import { handleMessage } from './handler.ts'
 import { startHealthServer, type HealthState } from './health.ts'
 import { log } from './logger.ts'
 import { S3ReceiptStore } from './receipt-store.ts'
+import { retryUntilDone } from './retry.ts'
 import { createTracerProvider, enableContext, traceMessage, tracedStore } from './tracing.ts'
 
 let config: Config
@@ -26,6 +27,9 @@ const tracer = tracerProvider?.getTracer('notifications') ?? trace.getTracer('no
 const state: HealthState = { alive: true, ready: false }
 const server = startHealthServer(state, config.port)
 
+// Aborted on shutdown, so a message that is waiting to be retried doesn't hold the pod up.
+const stopping = new AbortController()
+
 const consumer = new Consumer({
   clientId: 'notifications',
   groupId: config.consumerGroup,
@@ -44,8 +48,16 @@ async function run(): Promise<void> {
   log.info('connected', { topic: config.inputTopic, group: config.consumerGroup, port: config.port })
 
   for await (const message of stream) {
-    await traceMessage(tracer, config.inputTopic, message.headers, (ctx) =>
-      handleMessage(message.value, tracedStore(store, tracer, ctx)),
+    // If saving fails (for example S3 is down), retry the same message with growing pauses.
+    // The pod stays up, so the error count and lag stay visible to monitoring.
+    await retryUntilDone(
+      () =>
+        traceMessage(tracer, config.inputTopic, message.headers, (ctx) =>
+          handleMessage(message.value, tracedStore(store, tracer, ctx)),
+        ),
+      { initialDelayMs: 1000, maxDelayMs: 30_000, signal: stopping.signal },
+      (error, failures, nextDelayMs) =>
+        log.warn('receipt not saved, will retry', { error: String(error), failures, retry_in_ms: nextDelayMs }),
     )
     // Commit after the work is done: if we crash before this line,
     // the message is processed again (at-least-once delivery).
@@ -59,6 +71,7 @@ async function shutdown(signal: string): Promise<void> {
   shuttingDown = true
   log.info('shutting down', { signal })
   state.ready = false
+  stopping.abort()
   await consumer.close(true)
   await tracerProvider?.shutdown() // send the spans still waiting in the batch
   server.close()
