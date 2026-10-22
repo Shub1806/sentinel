@@ -8,6 +8,7 @@ have enough traffic: `kubectl apply -f infra/chaos/loadgen.yaml`.
 | 1 | Bad deploy: payments crash-loops | `payments-bad-config.sh` |
 | 2 | Database outage | `database-outage.sh` |
 | 3 | S3 outage | `s3-outage.sh` |
+| 4 | Slow consumer: payments falls behind | `slow-consumer.sh` |
 
 ## 1. Bad deploy: payments crash-loops
 
@@ -78,3 +79,27 @@ drains on its own; no restart needed.
 **History:** the first run (before the retry) showed a real weakness: one failed write stopped the consumer, the pod
 restarted every 2 minutes and was never ready, Prometheus counted **0** errors, `NotificationErrors` never fired, the
 cause was only in the logs, and recovery waited out up to 5 minutes of restart back-off. The in-process retry fixed all of it.
+
+## 4. Slow consumer: payments falls behind
+
+**Inject:** `./scripts/chaos/slow-consumer.sh inject 2000` sets `PROCESSING_DELAY_MS=2000` on payments. Each message
+waits 2 s before it is handled, so one pod manages 0.5 per second while orders arrive at 2 per second.
+
+**Expected (observed)**
+
+| Signal | Evidence |
+|---|---|
+| Alerts | `ConsumerLagHigh` for `payments` (about 17 min: lag passes 1000 after about 11 min, then 5 more min); nothing else. Orders keep returning 201, so the orders SLO alerts stay quiet |
+| Metrics | payments lag grows by about 90 per minute (2/s in, 0.5/s out); payments p95 about 2.4 s; payments throughput 0.5/s; notifications lag 0 (it only sees what payments sends) |
+| Autoscaler | Does **not** help. CPU stays about 20 % of the 70 % target because waiting uses no CPU. It went to 3 pods once, for about a minute, on the rollout's startup CPU spike, then back to 1 |
+| Consumer group | `rpk group describe payments`: one member owns all 3 partitions |
+| Logs / traces | No errors. `order.created process` spans of about 2 s |
+
+**Root cause:** payments handles messages more slowly than they arrive. Customers get their order accepted, but
+payments and receipts fall further behind every minute.
+
+**Recover:** `./scripts/chaos/slow-consumer.sh recover`. The new pod drained the backlog within about a minute of the
+rollout; smoke test passed.
+
+**Lesson:** CPU does not tell you whether a consumer keeps up. Scaling consumers on lag (for example with KEDA) would
+add pods here, up to one per partition (3).
