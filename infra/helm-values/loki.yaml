@@ -1,0 +1,70 @@
+# Loki (grafana-community/loki chart 18.15.1, Loki 3.7.8) for a single-node local k3d cluster.
+# Installed by Terraform (infra/terraform/platform/logging.tf).
+# One pod stores logs on its own volume; no object storage, no caches.
+
+deploymentMode: Monolithic
+
+loki:
+  # One tenant, so log senders don't need an X-Scope-OrgID header.
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+    filesystem:
+      chunks_directory: /var/loki/chunks
+      rules_directory: /var/loki/rules
+  schemaConfig:
+    configs:
+      - from: "2026-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  # Keep 2 days of logs, the same as Prometheus keeps metrics.
+  limits_config:
+    retention_period: 48h
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  persistence:
+    size: 2Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  extraEnv:
+    # Go starts collecting garbage harder before the container hits its memory limit.
+    - name: GOMEMLIMIT
+      value: 450MiB
+
+# The scalable modes default to 3 replicas each; this install runs only the single binary.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
+# Off: the nginx gateway, the canary + test pod, the memcached caches (they request GBs of
+# memory by default) and the rules sidecar. Clients talk to the "loki" Service on port 3100.
+gateway:
+  enabled: false
+test:
+  enabled: false
+lokiCanary:
+  enabled: false
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+sidecar:
+  rules:
+    enabled: false
