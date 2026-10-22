@@ -199,6 +199,60 @@ tests:
               summary: "payments skipped invalid messages"
               description: "payments skipped messages that failed validation in the last 10 minutes (about 1). A producer may be sending bad events."
 
+  # Redpanda goes down at 5m: the oldest unsent event keeps getting older.
+  - name: a stuck outbox alerts after 2 minutes over 60 s
+    interval: 30s
+    input_series:
+      - series: 'outbox_oldest_pending_age_seconds{namespace="sentinel", job="orders"}'
+        values: '0x10 30+30x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: OutboxBacklog
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: OutboxBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: orders
+            exp_annotations:
+              summary: "orders outbox is not draining"
+              description: "The oldest unsent event in the orders outbox has waited 4m 0s. Orders are accepted, but their events are not reaching Redpanda. Is the broker up?"
+
+  # A burst waits up to 55 s, then drains; later the database is down and the age is NaN.
+  - name: a burst or a database outage does not alert on the outbox
+    interval: 30s
+    input_series:
+      - series: 'outbox_oldest_pending_age_seconds{namespace="sentinel", job="orders"}'
+        values: '0x5 15 40 55 0x5 NaN NaN NaN NaN NaN NaN NaN NaN NaN NaN'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: OutboxBacklog
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: OutboxBacklog
+        exp_alerts: []
+
+  # The broker comes back: the relay sends everything and the alert clears.
+  - name: the outbox alert clears once events are sent
+    interval: 30s
+    input_series:
+      - series: 'outbox_oldest_pending_age_seconds{namespace="sentinel", job="orders"}'
+        values: '0+30x14 0x10'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: OutboxBacklog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: orders
+            exp_annotations:
+              summary: "orders outbox is not draining"
+              description: "The oldest unsent event in the orders outbox has waited 7m 0s. Orders are accepted, but their events are not reaching Redpanda. Is the broker up?"
+      - eval_time: 8m
+        alertname: OutboxBacklog
+        exp_alerts: []
+
   # A service pod restarts once; the topic Job pod restarts twice and is ignored.
   - name: service restarts alert, Job retries do not
     interval: 1m

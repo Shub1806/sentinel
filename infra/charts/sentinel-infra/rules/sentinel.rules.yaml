@@ -177,6 +177,17 @@ groups:
         annotations:
           summary: "{{ $labels.job }} skipped invalid messages"
           description: "{{ $labels.job }} skipped messages that failed validation in the last 10 minutes (about {{ $value | humanize }}). A producer may be sending bad events."
+      # The relay sends outbox events within a second or two. If the oldest unsent event has
+      # waited over a minute for 2 minutes, events are not reaching Redpanda: orders are still
+      # accepted, but payments and receipts stop. Age, not count: a burst drains fast.
+      - alert: OutboxBacklog
+        expr: max by (job) (outbox_oldest_pending_age_seconds{namespace="sentinel"}) > 60
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} outbox is not draining"
+          description: "The oldest unsent event in the {{ $labels.job }} outbox has waited {{ $value | humanizeDuration }}. Orders are accepted, but their events are not reaching Redpanda. Is the broker up?"
 
   - name: sentinel-pods.alerts
     rules:

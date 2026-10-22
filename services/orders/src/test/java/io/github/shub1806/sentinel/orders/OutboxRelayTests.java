@@ -8,6 +8,7 @@ import java.util.Properties;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -29,6 +30,12 @@ class OutboxRelayTests {
 
     @Autowired
     ConsumerFactory<?, ?> consumerFactory;
+
+    @Autowired
+    OutboxMetrics metrics;
+
+    @Autowired
+    MeterRegistry registry;
 
     @Test
     void relayPublishesPendingEventsAndMarksThemSent() {
@@ -63,5 +70,20 @@ class OutboxRelayTests {
     void nothingPendingMeansNothingSent() {
         relay.publishPending(); // send anything other tests left behind
         assertThat(relay.publishPending()).isZero();
+    }
+
+    @Test
+    void metricsShowUnsentEventsUntilTheRelaySendsThem() {
+        relay.publishPending(); // start from an empty outbox
+        service.create(new CreateOrderRequest("cust-metrics", 1200L, "USD"));
+
+        metrics.refresh();
+        assertThat(registry.get("outbox.pending.events").gauge().value()).isEqualTo(1);
+        assertThat(registry.get("outbox.oldest.pending.age").gauge().value()).isGreaterThanOrEqualTo(0);
+
+        relay.publishPending();
+        metrics.refresh();
+        assertThat(registry.get("outbox.pending.events").gauge().value()).isZero();
+        assertThat(registry.get("outbox.oldest.pending.age").gauge().value()).isZero();
     }
 }

@@ -1,6 +1,7 @@
 package io.github.shub1806.sentinel.orders;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -9,6 +10,12 @@ import org.springframework.data.repository.query.Param;
 public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> {
 
     List<OutboxEvent> findByAggregateId(UUID aggregateId);
+
+    /** How many events are not sent yet. */
+    long countByPublishedAtIsNull();
+
+    /** The oldest event that is not sent yet, if any. */
+    Optional<OutboxEvent> findFirstByPublishedAtIsNullOrderByCreatedAtAsc();
 
     /**
      * Locks the oldest unsent events. SKIP LOCKED means a second copy of the service
