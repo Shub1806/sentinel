@@ -2,10 +2,13 @@
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Protocol
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from opentelemetry import propagate, trace
+from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -15,25 +18,59 @@ from app.payment_logic import charge
 
 log = logging.getLogger("payments.worker")
 
+# Kafka message headers: (name, value) pairs with bytes values.
+Headers = Sequence[tuple[str, bytes]]
+
 
 class Producer(Protocol):
-    async def send_and_wait(self, topic: str, value: bytes, key: bytes | None = None): ...
+    async def send_and_wait(
+        self, topic: str, value: bytes, key: bytes | None = None, headers: Headers | None = None
+    ): ...
+
+
+def _trace_parent_from(headers: Headers):
+    """The trace context that orders put in the message headers (empty if there is none)."""
+    carrier = {name: value.decode("utf-8", "replace") for name, value in headers}
+    return propagate.extract(carrier)
+
+
+def _trace_headers() -> list[tuple[str, bytes]]:
+    """The current trace context as Kafka headers, so the next service can continue the trace."""
+    carrier: dict[str, str] = {}
+    propagate.inject(carrier)
+    return [(name, value.encode()) for name, value in carrier.items()]
 
 
 class PaymentsWorker:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, tracer: Tracer | None = None) -> None:
         self.settings = settings
         self.ready = False  # True once connected to Redpanda
+        self.tracer = tracer or trace.get_tracer("payments.worker")
 
-    async def handle(self, raw: bytes, producer: Producer) -> PaymentDone | None:
-        """Process one message. Returns the published event, or None if skipped."""
+    async def handle(
+        self, raw: bytes, producer: Producer, headers: Headers = ()
+    ) -> PaymentDone | None:
+        """Process one message, inside the trace it arrived with. Returns the published
+        event, or None if skipped."""
+        topic = self.settings.input_topic
+        with self.tracer.start_as_current_span(
+            f"{topic} process",
+            context=_trace_parent_from(headers),
+            kind=SpanKind.CONSUMER,
+            attributes={"messaging.system": "kafka", "messaging.destination.name": topic},
+        ) as span:
+            return await self._process(raw, producer, span)
+
+    async def _process(self, raw: bytes, producer: Producer, span) -> PaymentDone | None:
         try:
             order = OrderCreated.model_validate_json(raw)
         except ValidationError as exc:
             # A bad message must not stop the whole service. Log it and move on.
             INVALID_MESSAGES.inc()
+            span.set_status(Status(StatusCode.ERROR, "invalid order.created message"))
             log.warning("skipping invalid order.created message", extra={"errors": exc.errors()})
             return None
+        span.set_attribute("order.id", str(order.order_id))
 
         # Measures charging plus publishing, including any artificial delay.
         with PROCESSING_SECONDS.time():
@@ -43,11 +80,18 @@ class PaymentsWorker:
             payment = charge(
                 order, max_amount_cents=self.settings.max_amount_cents, now=datetime.now(UTC)
             )
-            await producer.send_and_wait(
-                self.settings.output_topic,
-                value=payment.model_dump_json().encode(),
-                key=str(payment.order_id).encode(),
-            )
+            out = self.settings.output_topic
+            with self.tracer.start_as_current_span(
+                f"{out} send",
+                kind=SpanKind.PRODUCER,
+                attributes={"messaging.system": "kafka", "messaging.destination.name": out},
+            ):
+                await producer.send_and_wait(
+                    out,
+                    value=payment.model_dump_json().encode(),
+                    key=str(payment.order_id).encode(),
+                    headers=_trace_headers(),
+                )
 
         # Count only after publishing succeeded. mode="json" gives the status exactly
         # as it appears in the payment.done event.
@@ -83,7 +127,7 @@ class PaymentsWorker:
                 self.ready = True
                 log.info("connected", extra={"topic": s.input_topic, "group": s.consumer_group})
                 async for msg in consumer:
-                    await self.handle(msg.value, producer)
+                    await self.handle(msg.value, producer, msg.headers)
                     # Commit after publishing: if we crash before this line, the
                     # message is processed again (at-least-once delivery).
                     await consumer.commit()

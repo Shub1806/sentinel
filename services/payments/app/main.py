@@ -10,6 +10,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.config import Settings, load_settings
 from app.logging_setup import configure_logging
+from app.tracing import configure_tracing
 from app.worker import PaymentsWorker
 
 log = logging.getLogger("payments")
@@ -27,6 +28,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         configure_logging()
+        tracer_provider = configure_tracing()
         settings = settings_loader()  # a bad setting stops startup here
         worker = worker_factory(settings)
         task = asyncio.create_task(worker.run())
@@ -38,6 +40,8 @@ def create_app(
         # The worker may have already crashed; that error was logged above.
         with suppress(asyncio.CancelledError, Exception):
             await task
+        if tracer_provider is not None:
+            tracer_provider.shutdown()  # send the spans still waiting in the batch
 
     app = FastAPI(title="payments", lifespan=lifespan)
 

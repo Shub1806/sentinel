@@ -31,14 +31,14 @@ class FakeProducer:
     def __init__(self):
         self.sent = []
 
-    async def send_and_wait(self, topic, value, key=None):
+    async def send_and_wait(self, topic, value, key=None, headers=None):
         self.sent.append((topic, key, json.loads(value)))
 
 
 class BrokenProducer:
     """Stands in for Kafka when the broker is unreachable."""
 
-    async def send_and_wait(self, topic, value, key=None):
+    async def send_and_wait(self, topic, value, key=None, headers=None):
         raise ConnectionError("broker unreachable")
 
 
