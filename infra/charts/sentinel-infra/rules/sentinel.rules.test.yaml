@@ -1,0 +1,303 @@
+# Unit tests for sentinel.rules.yaml. Run from this folder:
+#   promtool test rules sentinel.rules.test.yaml
+# Or with Docker (no install needed), from the repo root:
+#   docker run --rm -v "$PWD/infra/charts/sentinel-infra/rules:/rules" -w /rules --entrypoint promtool prom/prometheus:v3.15.0 test rules sentinel.rules.test.yaml
+rule_files:
+  - sentinel.rules.yaml
+evaluation_interval: 30s
+
+tests:
+  # Healthy orders traffic: 1 request/s, all 201, all fast. No SLO alert.
+  - name: healthy orders traffic raises no SLO alert
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="201"}'
+        values: '0+60x90'
+      - series: 'http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", status="201", le="0.5"}'
+        values: '0+60x90'
+    promql_expr_test:
+      - expr: sentinel:orders_post_error_ratio:rate5m
+        eval_time: 60m
+        exp_samples:
+          - labels: 'sentinel:orders_post_error_ratio:rate5m'
+            value: 0
+      - expr: sentinel:orders_post_slow_ratio:rate5m
+        eval_time: 60m
+        exp_samples:
+          - labels: 'sentinel:orders_post_slow_ratio:rate5m'
+            value: 0
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: OrdersLatencyBudgetBurnFast
+        exp_alerts: []
+
+  # 10% of requests fail (6 of 60 per minute): far above 14.4 x 0.1%.
+  - name: orders 5xx burst fires the fast availability alert
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="201"}'
+        values: '0+54x90'
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="500"}'
+        values: '0+6x90'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: orders
+              slo: availability
+            exp_annotations:
+              summary: orders is burning its availability error budget fast
+              description: "10% of POST /orders requests returned 5xx over the last 5 minutes (SLO allows 0.1%)."
+
+  # Errors stop at 30m: the 5m window clears, so the alert resolves even though the 1h window is still high.
+  - name: fast availability alert clears soon after errors stop
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="201"}'
+        values: '0+54x30 1620+60x60'
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="500"}'
+        values: '0+6x30 180+0x60'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: orders
+              slo: availability
+            exp_annotations:
+              summary: orders is burning its availability error budget fast
+              description: "10% of POST /orders requests returned 5xx over the last 5 minutes (SLO allows 0.1%)."
+      - eval_time: 40m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts: []
+
+  # 20% of requests take longer than 500 ms: above 14.4 x 1%.
+  - name: slow orders fire the fast latency alert
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="201"}'
+        values: '0+60x90'
+      - series: 'http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", status="201", le="0.5"}'
+        values: '0+48x90'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: OrdersLatencyBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: orders
+              slo: latency
+            exp_annotations:
+              summary: orders is burning its latency error budget fast
+              description: "20% of POST /orders requests took longer than 500 ms over the last 5 minutes (SLO allows 1%)."
+
+  # A burst that drains within a minute must not alert; lag stuck above 1000 must.
+  - name: consumer lag alerts only when it stays high
+    interval: 15s
+    input_series:
+      - series: 'redpanda_kafka_consumer_group_lag_sum{namespace="sentinel", redpanda_group="payments"}'
+        values: '0x10 4000 2000 500 0x60'
+      - series: 'redpanda_kafka_consumer_group_lag_sum{namespace="sentinel", redpanda_group="notifications"}'
+        values: '0x10 3000x60'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: ConsumerLagHigh
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: ConsumerLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              redpanda_group: notifications
+            exp_annotations:
+              summary: "Consumer group notifications is falling behind"
+              description: "notifications has 3000 unread messages and has been above 1000 for 5 minutes."
+
+  # 10% of payments fail for more than 10 minutes.
+  - name: payment failures above 5% alert
+    interval: 1m
+    input_series:
+      - series: 'payments_processed_total{namespace="sentinel", status="succeeded"}'
+        values: '0+90x40'
+      - series: 'payments_processed_total{namespace="sentinel", status="failed"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PaymentFailureRatioHigh
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: PaymentFailureRatioHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: payments
+            exp_annotations:
+              summary: More than 5% of payments are failing
+              description: "10% of payments failed over the last 10 minutes."
+
+  # No payments at all must not alert (0/0 is not a failure).
+  - name: no payment traffic raises no failure alert
+    interval: 1m
+    input_series:
+      - series: 'payments_processed_total{namespace="sentinel", status="succeeded"}'
+        values: '0x40'
+      - series: 'payments_processed_total{namespace="sentinel", status="failed"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: PaymentFailureRatioHigh
+        exp_alerts: []
+
+  # S3 down: notifications errors every minute.
+  - name: notification errors alert after 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'notifications_message_errors_total{namespace="sentinel"}'
+        values: '0x5 0+6x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: NotificationErrors
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: NotificationErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: notifications
+            exp_annotations:
+              summary: notifications keeps failing to handle messages
+              description: "notifications has been failing (and retrying) messages for 5 minutes, at 100m/s. Check that S3 is reachable."
+
+  # One bad event reaches payments.
+  - name: an invalid message alerts right away
+    interval: 1m
+    input_series:
+      - series: 'payments_invalid_messages_total{namespace="sentinel", job="payments"}'
+        values: '0x5 1x20'
+      - series: 'notifications_messages_processed_total{namespace="sentinel", job="notifications", result="skipped_invalid"}'
+        values: '0x25'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: InvalidMessagesReceived
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: InvalidMessagesReceived
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: payments
+            exp_annotations:
+              summary: "payments skipped invalid messages"
+              description: "payments skipped messages that failed validation in the last 10 minutes (about 1). A producer may be sending bad events."
+
+  # A service pod restarts once; the topic Job pod restarts twice and is ignored.
+  - name: service restarts alert, Job retries do not
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="sentinel", pod="orders-abc", container="orders"}'
+        values: '0x5 1x20'
+      - series: 'kube_pod_container_status_restarts_total{namespace="sentinel", pod="redpanda-create-topics-xyz", container="create-topics"}'
+        values: '0x2 2x20'
+      - series: 'kube_pod_owner{namespace="sentinel", pod="orders-abc", owner_kind="ReplicaSet", owner_name="orders-7d7bbff86"}'
+        values: '1x25'
+      - series: 'kube_pod_owner{namespace="sentinel", pod="redpanda-create-topics-xyz", owner_kind="Job", owner_name="redpanda-create-topics"}'
+        values: '1x25'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: PodRestarted
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: sentinel
+              pod: orders-abc
+            exp_annotations:
+              summary: "Pod orders-abc restarted"
+              description: "orders-abc restarted in the last 10 minutes. Check its last termination reason (for example OOMKilled)."
+      - eval_time: 20m
+        alertname: PodRestarted
+        exp_alerts: []
+
+  # Low traffic (under 1 request/min) with 25% errors and 25% slow: below both guards, so no SLO alert.
+  - name: low traffic cannot trigger SLO alerts
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="201"}'
+        values: '0+0.6x90'
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="500"}'
+        values: '0+0.2x90'
+      - series: 'http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", status="201", le="0.5"}'
+        values: '0+0.45x90'
+      - series: 'http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", status="500", le="0.5"}'
+        values: '0+0.15x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: OrdersAvailabilityBudgetBurnSlow
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: OrdersLatencyBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: OrdersLatencyBudgetBurnSlow
+        exp_alerts: []
+
+  # Same 25% error ratio at 2 requests/s: the guard is met, so both availability alerts fire.
+  - name: the same error ratio at real traffic fires both availability alerts
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="201"}'
+        values: '0+90x90'
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="500"}'
+        values: '0+30x90'
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: orders
+              slo: availability
+            exp_annotations:
+              summary: orders is burning its availability error budget fast
+              description: "25% of POST /orders requests returned 5xx over the last 5 minutes (SLO allows 0.1%)."
+      - eval_time: 80m
+        alertname: OrdersAvailabilityBudgetBurnSlow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: orders
+              slo: availability
+            exp_annotations:
+              summary: orders is steadily burning its availability error budget
+              description: "25% of POST /orders requests returned 5xx over the last 30 minutes (SLO allows 0.1%)."
+
+  # Errors get worse (10% then 50%): the annotation must show the recent 5m ratio, not the 1h average.
+  - name: fast-burn annotation reports the 5-minute ratio
+    interval: 1m
+    input_series:
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="201"}'
+        values: '0+54x50 2700+30x20'
+      - series: 'http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status="500"}'
+        values: '0+6x50 300+30x20'
+    alert_rule_test:
+      - eval_time: 65m
+        alertname: OrdersAvailabilityBudgetBurnFast
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: orders
+              slo: availability
+            exp_annotations:
+              summary: orders is burning its availability error budget fast
+              description: "50% of POST /orders requests returned 5xx over the last 5 minutes (SLO allows 0.1%)."

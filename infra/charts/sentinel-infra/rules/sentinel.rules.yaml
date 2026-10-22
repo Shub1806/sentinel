@@ -1,0 +1,195 @@
+# Sentinel alert and recording rules (Prometheus rule-file format).
+# Loaded into a PrometheusRule by templates/prometheus-rules.yaml.
+# Unit tests: sentinel.rules.test.yaml (run with promtool test rules).
+#
+# SLOs for POST /orders (health and metrics endpoints are not part of the SLI):
+#   Availability: 99.9% of requests do not return 5xx   -> error budget 0.1%
+#   Latency:      99% of requests finish within 500 ms  -> error budget 1%
+# Alerts use multi-window burn rates (Google SRE workbook, chapter 5):
+#   fast burn: 14.4x budget over 1h and 5m (2% of a 30-day budget in an hour)
+#   slow burn:  6x   budget over 6h and 30m (5% of a 30-day budget in 6 hours)
+# The short window lets an alert clear soon after the problem stops, and comes first
+# because "A and B" reports A's value, which is what the annotation shows.
+# Guard: fast burn needs >= 10 requests in 5m, slow burn >= 30 in 30m.
+groups:
+  - name: sentinel-slo.rules
+    rules:
+      - record: sentinel:orders_post_error_ratio:rate5m
+        expr: |
+          (sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status=~"5.."}[5m])) or vector(0))
+          /
+          sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[5m]))
+      - record: sentinel:orders_post_error_ratio:rate30m
+        expr: |
+          (sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status=~"5.."}[30m])) or vector(0))
+          /
+          sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[30m]))
+      - record: sentinel:orders_post_error_ratio:rate1h
+        expr: |
+          (sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status=~"5.."}[1h])) or vector(0))
+          /
+          sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[1h]))
+      - record: sentinel:orders_post_error_ratio:rate6h
+        expr: |
+          (sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders", status=~"5.."}[6h])) or vector(0))
+          /
+          sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[6h]))
+      # Requests in the short windows. The burn-rate alerts need a minimum number of
+      # requests, so one bad request at very low traffic can't page anyone.
+      - record: sentinel:orders_post_requests:increase5m
+        expr: sum(increase(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[5m]))
+      - record: sentinel:orders_post_requests:increase30m
+        expr: sum(increase(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[30m]))
+      - record: sentinel:orders_post_slow_ratio:rate5m
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", le="0.5"}[5m]))
+            /
+            sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[5m]))
+          )
+      - record: sentinel:orders_post_slow_ratio:rate30m
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", le="0.5"}[30m]))
+            /
+            sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[30m]))
+          )
+      - record: sentinel:orders_post_slow_ratio:rate1h
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", le="0.5"}[1h]))
+            /
+            sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[1h]))
+          )
+      - record: sentinel:orders_post_slow_ratio:rate6h
+        expr: |
+          1 - (
+            sum(rate(http_server_requests_seconds_bucket{namespace="sentinel", method="POST", uri="/orders", le="0.5"}[6h]))
+            /
+            sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[6h]))
+          )
+
+  - name: sentinel-slo.alerts
+    rules:
+      - alert: OrdersAvailabilityBudgetBurnFast
+        expr: |
+          sentinel:orders_post_error_ratio:rate5m > (14.4 * 0.001)
+          and
+          sentinel:orders_post_error_ratio:rate1h > (14.4 * 0.001)
+          and
+          sentinel:orders_post_requests:increase5m >= 10
+        for: 2m
+        labels:
+          severity: critical
+          service: orders
+          slo: availability
+        annotations:
+          summary: orders is burning its availability error budget fast
+          description: "{{ $value | humanizePercentage }} of POST /orders requests returned 5xx over the last 5 minutes (SLO allows 0.1%)."
+      - alert: OrdersAvailabilityBudgetBurnSlow
+        expr: |
+          sentinel:orders_post_error_ratio:rate30m > (6 * 0.001)
+          and
+          sentinel:orders_post_error_ratio:rate6h > (6 * 0.001)
+          and
+          sentinel:orders_post_requests:increase30m >= 30
+        for: 15m
+        labels:
+          severity: warning
+          service: orders
+          slo: availability
+        annotations:
+          summary: orders is steadily burning its availability error budget
+          description: "{{ $value | humanizePercentage }} of POST /orders requests returned 5xx over the last 30 minutes (SLO allows 0.1%)."
+      - alert: OrdersLatencyBudgetBurnFast
+        expr: |
+          sentinel:orders_post_slow_ratio:rate5m > (14.4 * 0.01)
+          and
+          sentinel:orders_post_slow_ratio:rate1h > (14.4 * 0.01)
+          and
+          sentinel:orders_post_requests:increase5m >= 10
+        for: 2m
+        labels:
+          severity: critical
+          service: orders
+          slo: latency
+        annotations:
+          summary: orders is burning its latency error budget fast
+          description: "{{ $value | humanizePercentage }} of POST /orders requests took longer than 500 ms over the last 5 minutes (SLO allows 1%)."
+      - alert: OrdersLatencyBudgetBurnSlow
+        expr: |
+          sentinel:orders_post_slow_ratio:rate30m > (6 * 0.01)
+          and
+          sentinel:orders_post_slow_ratio:rate6h > (6 * 0.01)
+          and
+          sentinel:orders_post_requests:increase30m >= 30
+        for: 15m
+        labels:
+          severity: warning
+          service: orders
+          slo: latency
+        annotations:
+          summary: orders is steadily burning its latency error budget
+          description: "{{ $value | humanizePercentage }} of POST /orders requests took longer than 500 ms over the last 30 minutes (SLO allows 1%)."
+
+  - name: sentinel-pipeline.alerts
+    rules:
+      # Lag is a 15 s snapshot. Bursts drain in under a minute (20k messages: ~45 s),
+      # so only lag that stays high for 5 minutes alerts. This also catches a stuck
+      # consumer, whose lag stays flat instead of growing.
+      - alert: ConsumerLagHigh
+        expr: sum by (redpanda_group) (redpanda_kafka_consumer_group_lag_sum{namespace="sentinel"}) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer group {{ $labels.redpanda_group }} is falling behind"
+          description: "{{ $labels.redpanda_group }} has {{ $value }} unread messages and has been above 1000 for 5 minutes."
+      - alert: PaymentFailureRatioHigh
+        expr: |
+          sum(rate(payments_processed_total{namespace="sentinel", status="failed"}[10m]))
+          /
+          sum(rate(payments_processed_total{namespace="sentinel"}[10m]))
+          > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: payments
+        annotations:
+          summary: More than 5% of payments are failing
+          description: "{{ $value | humanizePercentage }} of payments failed over the last 10 minutes."
+      - alert: NotificationErrors
+        expr: sum(rate(notifications_message_errors_total{namespace="sentinel"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: notifications
+        annotations:
+          summary: notifications keeps failing to handle messages
+          description: "notifications has been failing (and retrying) messages for 5 minutes, at {{ $value | humanize }}/s. Check that S3 is reachable."
+      - alert: InvalidMessagesReceived
+        expr: |
+          sum by (job) (increase(payments_invalid_messages_total{namespace="sentinel"}[10m])) > 0
+          or
+          sum by (job) (increase(notifications_messages_processed_total{namespace="sentinel", result="skipped_invalid"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} skipped invalid messages"
+          description: "{{ $labels.job }} skipped messages that failed validation in the last 10 minutes (about {{ $value | humanize }}). A producer may be sending bad events."
+
+  - name: sentinel-pods.alerts
+    rules:
+      # Job pods (like topic creation) are left out: they retry on purpose at startup.
+      - alert: PodRestarted
+        expr: |
+          (
+            sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total{namespace="sentinel"}[10m]))
+            unless on (namespace, pod)
+            kube_pod_owner{namespace="sentinel", owner_kind="Job"}
+          ) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod {{ $labels.pod }} restarted"
+          description: "{{ $labels.pod }} restarted in the last 10 minutes. Check its last termination reason (for example OOMKilled)."

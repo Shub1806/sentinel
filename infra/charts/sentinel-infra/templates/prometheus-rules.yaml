@@ -1,0 +1,9 @@
+{{- /* Alert and recording rules. They live in rules/sentinel.rules.yaml in plain Prometheus
+       format, so promtool can check and unit-test them. .Files.Get copies the file in as-is,
+       so Prometheus placeholders like $labels in annotations are not touched by Helm. */ -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sentinel-rules
+spec:
+{{ .Files.Get "rules/sentinel.rules.yaml" | indent 2 }}
