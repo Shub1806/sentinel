@@ -5,6 +5,8 @@ import logging
 import sys
 from datetime import UTC, datetime
 
+from opentelemetry import trace
+
 _STANDARD_ATTRS = set(logging.makeLogRecord({}).__dict__) | {"message", "asctime"}
 
 
@@ -16,6 +18,11 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "msg": record.getMessage(),
         }
+        # The trace and span this line belongs to, so Grafana can jump from the log to the trace.
+        span = trace.get_current_span().get_span_context()
+        if span.is_valid:
+            entry["trace_id"] = format(span.trace_id, "032x")
+            entry["span_id"] = format(span.span_id, "016x")
         # Anything passed via logger.info(..., extra={...}) becomes a field.
         for key, value in record.__dict__.items():
             if key not in _STANDARD_ATTRS:

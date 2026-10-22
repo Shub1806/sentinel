@@ -77,6 +77,7 @@ public class OutboxRelay {
         Span span = tracing.startPublishSpan(event.getTraceparent(), event.getTopic());
         try (Tracer.SpanInScope ignored = tracing.inScope(span)) {
             // .join() waits until Redpanda confirms it stored the message.
+            log.info("published {} for order {}", event.getTopic(), event.getAggregateId());
             kafka.send(event.getTopic(), event.getAggregateId().toString(), event.getPayload()).join();
         } catch (RuntimeException e) {
             span.error(e);

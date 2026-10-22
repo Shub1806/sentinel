@@ -6,7 +6,7 @@ import { handleMessage } from './handler.ts'
 import { startHealthServer, type HealthState } from './health.ts'
 import { log } from './logger.ts'
 import { S3ReceiptStore } from './receipt-store.ts'
-import { createTracerProvider, traceMessage, tracedStore } from './tracing.ts'
+import { createTracerProvider, enableContext, traceMessage, tracedStore } from './tracing.ts'
 
 let config: Config
 try {
@@ -20,6 +20,7 @@ try {
 // Node.js runtime metrics for /metrics: memory, CPU, event-loop delay, garbage collection.
 collectDefaultMetrics()
 const store = new S3ReceiptStore(config)
+enableContext()
 const tracerProvider = createTracerProvider(config.otlpTracesEndpoint, config.serviceName)
 const tracer = tracerProvider?.getTracer('notifications') ?? trace.getTracer('notifications')
 const state: HealthState = { alive: true, ready: false }

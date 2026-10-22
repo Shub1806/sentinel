@@ -1,4 +1,14 @@
-import { type Context, ROOT_CONTEXT, SpanKind, SpanStatusCode, type Tracer, defaultTextMapGetter, trace } from '@opentelemetry/api'
+import {
+  type Context,
+  ROOT_CONTEXT,
+  SpanKind,
+  SpanStatusCode,
+  type Tracer,
+  context,
+  defaultTextMapGetter,
+  trace,
+} from '@opentelemetry/api'
+import { AsyncLocalStorageContextManager } from '@opentelemetry/context-async-hooks'
 import { W3CTraceContextPropagator } from '@opentelemetry/core'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { resourceFromAttributes } from '@opentelemetry/resources'
@@ -7,6 +17,14 @@ import type { HandleResult } from './metrics.ts'
 import type { ReceiptStore } from './receipt-store.ts'
 
 const propagator = new W3CTraceContextPropagator()
+
+/**
+ * Lets code deeper down (like the logger) find the span of the message being handled.
+ * Without it, @opentelemetry/api has no "current span" across awaits.
+ */
+export function enableContext(): void {
+  context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable())
+}
 
 /**
  * A provider that sends spans to Tempo over OTLP/HTTP, or undefined when no endpoint is set
@@ -46,7 +64,8 @@ export async function traceMessage(
     parent,
   )
   try {
-    const result = await work(trace.setSpan(parent, span))
+    const ctx = trace.setSpan(parent, span)
+    const result = await context.with(ctx, () => work(ctx))
     span.setAttribute('notifications.result', result)
     if (result === 'skipped_invalid') {
       span.setStatus({ code: SpanStatusCode.ERROR, message: 'invalid payment.done message' })

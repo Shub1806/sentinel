@@ -1,9 +1,9 @@
-import { SpanKind, SpanStatusCode } from '@opentelemetry/api'
+import { SpanKind, SpanStatusCode, context } from '@opentelemetry/api'
 import { InMemorySpanExporter, SimpleSpanProcessor, TracerProvider } from '@opentelemetry/sdk-trace'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { handleMessage } from '../src/handler.ts'
 import type { ReceiptStore } from '../src/receipt-store.ts'
-import { createTracerProvider, traceMessage, tracedStore } from '../src/tracing.ts'
+import { createTracerProvider, enableContext, traceMessage, tracedStore } from '../src/tracing.ts'
 
 // What payments puts on a payment.done message (trace id, then the id of its send span).
 const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736'
@@ -38,7 +38,12 @@ function process(raw: string, headers: Map<string, string> | undefined, store: R
 
 const spanOf = (kind: SpanKind) => exporter.getFinishedSpans().filter((s) => s.kind === kind)
 
-afterEach(() => exporter.reset())
+beforeAll(() => enableContext())
+afterAll(() => context.disable())
+afterEach(() => {
+  exporter.reset()
+  vi.restoreAllMocks()
+})
 
 describe('tracing', () => {
   it('continues the trace that payments started', async () => {
@@ -86,6 +91,28 @@ describe('tracing', () => {
     expect(s3?.status.code).toBe(SpanStatusCode.ERROR)
     expect(consumer?.status.code).toBe(SpanStatusCode.ERROR)
     expect(consumer?.events.some((e) => e.name === 'exception')).toBe(true)
+  })
+
+  it('puts the trace and span ids in log lines written while handling the message', async () => {
+    const lines: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((line: string) => void lines.push(line))
+
+    await process(PAYMENT, HEADERS, memoryStore())
+
+    const [consumer] = spanOf(SpanKind.CONSUMER)
+    const saved = lines.map((l) => JSON.parse(l)).find((e) => e.msg === 'receipt saved')
+    expect(saved?.trace_id).toBe(TRACE_ID)
+    expect(saved?.span_id).toBe(consumer?.spanContext().spanId)
+  })
+
+  it('leaves trace fields out of log lines written outside a message', async () => {
+    const lines: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((line: string) => void lines.push(line))
+    const { log } = await import('../src/logger.ts')
+
+    log.info('connected')
+
+    expect(JSON.parse(lines[0] ?? '{}')).not.toHaveProperty('trace_id')
   })
 
   it('is off without an endpoint', () => {

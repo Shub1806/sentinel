@@ -3,6 +3,8 @@ package io.github.shub1806.sentinel.orders;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -11,6 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 public class OrderService {
 
     static final String ORDER_CREATED_TOPIC = "order.created";
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private final CustomerOrderRepository orders;
     private final OutboxEventRepository outbox;
@@ -57,7 +60,7 @@ public class OrderService {
                 json.writeValueAsString(event),
                 now,
                 tracing.currentTraceparent()));
-
+        log.info("order created {} ({} {} cents)", order.getId(), order.getCurrency(), order.getAmountCents());
         return order;
     }
 }

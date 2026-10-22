@@ -2,6 +2,7 @@ import json
 import logging
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
 
 from app.logging_setup import configure_logging
 
@@ -64,3 +65,26 @@ def test_app_logs_still_come_out_as_json(capsys):
     entry = json.loads(capsys.readouterr().out)
     assert entry["msg"] == "payment processed"
     assert entry["order_id"] == "o-1"
+
+
+def test_log_lines_inside_a_span_carry_its_ids(capsys):
+    configure_logging()
+    provider = TracerProvider()
+    try:
+        with provider.get_tracer("test").start_as_current_span("work") as span:
+            logging.getLogger("payments").info("payment processed")
+        ids = span.get_span_context()
+    finally:
+        provider.shutdown()
+
+    entry = json.loads(capsys.readouterr().out)
+    assert entry["trace_id"] == format(ids.trace_id, "032x")
+    assert entry["span_id"] == format(ids.span_id, "016x")
+
+
+def test_log_lines_outside_a_span_have_no_trace_fields(capsys):
+    configure_logging()
+
+    logging.getLogger("payments").info("connected")
+
+    assert "trace_id" not in json.loads(capsys.readouterr().out)
