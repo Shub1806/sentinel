@@ -31,3 +31,13 @@ def configure_logging(level: str = "INFO") -> None:
     root = logging.getLogger()
     root.handlers = [handler]
     root.setLevel(level)
+
+    # Uvicorn sets up its own plain-text handlers before the app starts. Send its
+    # messages through the JSON handler instead.
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(name)
+        uvicorn_logger.handlers = []
+        uvicorn_logger.propagate = True
+    # The service only serves probes and /metrics, which arrive every few seconds;
+    # one log line per request would bury everything else.
+    logging.getLogger("uvicorn.access").disabled = True
