@@ -1,0 +1,37 @@
+{
+  "version": "4",
+  "groupKey": "{}/{namespace=\"sentinel\"}:{alertname=\"InvalidMessagesReceived\", namespace=\"sentinel\"}",
+  "truncatedAlerts": 0,
+  "status": "resolved",
+  "receiver": "agent",
+  "groupLabels": {
+    "alertname": "InvalidMessagesReceived",
+    "namespace": "sentinel"
+  },
+  "commonLabels": {
+    "alertname": "InvalidMessagesReceived",
+    "namespace": "sentinel",
+    "severity": "warning"
+  },
+  "commonAnnotations": {},
+  "externalURL": "http://alertmanager:9093",
+  "alerts": [
+    {
+      "status": "resolved",
+      "labels": {
+        "alertname": "InvalidMessagesReceived",
+        "job": "payments",
+        "namespace": "sentinel",
+        "severity": "warning"
+      },
+      "annotations": {
+        "summary": "payments skipped invalid messages",
+        "description": "payments skipped messages that failed validation in the last 10 minutes."
+      },
+      "startsAt": "2026-10-22T23:15:05.123Z",
+      "endsAt": "2026-10-22T23:25:00Z",
+      "generatorURL": "http://prometheus:9090/graph?g0.expr=...",
+      "fingerprint": "fp-payments"
+    }
+  ]
+}

@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLUSTER=sentinel
-SERVICES=(orders payments notifications)
+SERVICES=(orders payments notifications agent)
 
 step() { printf '\n==> %s\n' "$*"; }
 

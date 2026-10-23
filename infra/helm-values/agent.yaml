@@ -1,0 +1,12 @@
+# Values for the on-call agent (chart: infra/charts/sentinel-service).
+# It runs in its own namespace, "agent", so its pods never show up in the
+# sentinel alerts it investigates.
+image:
+  repository: sentinel/agent
+  tag: dev
+
+port: 8003
+
+metrics:
+  enabled: true
+  path: /metrics
