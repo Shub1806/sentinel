@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { retryUntilDone } from '../src/retry.ts'
+import { keepConnected, retryUntilDone } from '../src/retry.ts'
 
 /** A sleep that doesn't wait, but remembers how long it was asked to wait. */
 function recordingSleep() {
@@ -92,5 +92,83 @@ describe('retryUntilDone', () => {
       retryUntilDone(failingTimes(100).attempt, { initialDelayMs: 10_000, maxDelayMs: 10_000, signal: stop.signal }),
     ).rejects.toThrow('S3 down (1)')
     expect(Date.now() - started).toBeLessThan(1000)
+  })
+})
+
+describe('keepConnected', () => {
+  const options = { initialDelayMs: 1000, maxDelayMs: 30_000 }
+
+  it('keeps trying to connect, doubling the pause up to the maximum', async () => {
+    const { waits, sleep } = recordingSleep()
+    const lost: number[] = []
+    let calls = 0
+
+    await keepConnected(
+      async () => {
+        calls += 1
+        if (calls <= 7) throw new Error('broker down')
+      },
+      { ...options, sleep },
+      (_e, failures) => lost.push(failures),
+    )
+
+    expect(calls).toBe(8)
+    expect(waits).toEqual([1000, 2000, 4000, 8000, 16_000, 30_000, 30_000])
+    expect(lost).toEqual([1, 2, 3, 4, 5, 6, 7])
+  })
+
+  it('starts again from the shortest pause after a successful connect', async () => {
+    const { waits, sleep } = recordingSleep()
+    const lost: number[] = []
+    let calls = 0
+
+    await keepConnected(
+      async (connected) => {
+        calls += 1
+        if (calls === 4) connected() // connected, then lost again
+        if (calls <= 5) throw new Error('connection lost')
+      },
+      { ...options, sleep },
+      (_e, failures) => lost.push(failures),
+    )
+
+    expect(waits).toEqual([1000, 2000, 4000, 1000, 2000])
+    expect(lost).toEqual([1, 2, 3, 1, 2])
+  })
+
+  it('stops when aborted, and reports the real error', async () => {
+    const stop = new AbortController()
+    const sleep = async () => {
+      stop.abort()
+      throw new Error('aborted')
+    }
+
+    await expect(
+      keepConnected(
+        async () => {
+          throw new Error('broker down')
+        },
+        { ...options, sleep, signal: stop.signal },
+      ),
+    ).rejects.toThrow('broker down')
+  })
+
+  it('does not retry an error that happens after shutdown started', async () => {
+    const stop = new AbortController()
+    const { waits, sleep } = recordingSleep()
+    let calls = 0
+
+    await expect(
+      keepConnected(
+        async () => {
+          calls += 1
+          stop.abort()
+          throw new Error('closed during shutdown')
+        },
+        { ...options, sleep, signal: stop.signal },
+      ),
+    ).rejects.toThrow('closed during shutdown')
+    expect(calls).toBe(1)
+    expect(waits).toEqual([])
   })
 })

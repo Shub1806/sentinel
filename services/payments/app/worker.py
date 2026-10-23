@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from aiokafka.errors import KafkaError
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 from pydantic import ValidationError
@@ -42,10 +43,18 @@ def _trace_headers() -> list[tuple[str, bytes]]:
 
 
 class PaymentsWorker:
-    def __init__(self, settings: Settings, tracer: Tracer | None = None) -> None:
+    # Waits between reconnect attempts: 1 s, 2 s, 4 s ... up to 30 s.
+    RECONNECT_INITIAL_DELAY_S = 1.0
+    RECONNECT_MAX_DELAY_S = 30.0
+
+    def __init__(
+        self, settings: Settings, tracer: Tracer | None = None, sleep=asyncio.sleep
+    ) -> None:
         self.settings = settings
-        self.ready = False  # True once connected to Redpanda
+        self.ready = False  # True while connected to Redpanda
         self.tracer = tracer or trace.get_tracer("payments.worker")
+        self._sleep = sleep  # replaceable in tests
+        self._reconnect_delay = self.RECONNECT_INITIAL_DELAY_S
 
     async def handle(
         self, raw: bytes, producer: Producer, headers: Headers = ()
@@ -108,6 +117,34 @@ class PaymentsWorker:
         return payment
 
     async def run(self) -> None:
+        """Consumes until cancelled. If Redpanda can't be reached, or the connection is lost,
+        waits and connects again instead of stopping: the pod stays up (alive, not ready),
+        so Kubernetes doesn't restart it in a loop while the broker is down."""
+        failures = 0
+        while True:
+            try:
+                await self._consume()
+                return
+            except (KafkaError, OSError) as exc:
+                self.ready = False
+                failures += 1
+                delay = self._reconnect_delay
+                log.warning(
+                    "lost connection to Redpanda, reconnecting",
+                    extra={
+                        "error": repr(exc),
+                        "failures": failures,
+                        "retry_in_ms": int(delay * 1000),
+                    },
+                )
+                await self._sleep(delay)
+                self._reconnect_delay = min(delay * 2, self.RECONNECT_MAX_DELAY_S)
+
+    def _connected(self) -> None:
+        self.ready = True
+        self._reconnect_delay = self.RECONNECT_INITIAL_DELAY_S
+
+    async def _consume(self) -> None:
         s = self.settings
         consumer = AIOKafkaConsumer(
             s.input_topic,
@@ -120,19 +157,21 @@ class PaymentsWorker:
             bootstrap_servers=s.kafka_bootstrap_servers,
             enable_idempotence=True,  # no duplicate writes on producer retries
         )
-        await producer.start()
+        # Start inside try/finally: if Redpanda is down, start() fails, and both clients
+        # must still be closed before the next attempt creates new ones.
         try:
+            await producer.start()
             await consumer.start()
-            try:
-                self.ready = True
-                log.info("connected", extra={"topic": s.input_topic, "group": s.consumer_group})
-                async for msg in consumer:
-                    await self.handle(msg.value, producer, msg.headers)
-                    # Commit after publishing: if we crash before this line, the
-                    # message is processed again (at-least-once delivery).
-                    await consumer.commit()
-            finally:
-                self.ready = False
-                await consumer.stop()
+            self._connected()
+            log.info("connected", extra={"topic": s.input_topic, "group": s.consumer_group})
+            async for msg in consumer:
+                await self.handle(msg.value, producer, msg.headers)
+                # Commit after publishing: if we crash before this line, the
+                # message is processed again (at-least-once delivery).
+                await consumer.commit()
         finally:
-            await producer.stop()
+            self.ready = False
+            try:
+                await consumer.stop()
+            finally:
+                await producer.stop()
