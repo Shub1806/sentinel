@@ -2,10 +2,12 @@
 
 Alertmanager groups alerts (by alert name and namespace, see the route in
 infra/helm-values/monitoring.yaml) and sends the whole group again whenever it changes.
+Incidents are matched by those group labels (Notification.incident_key).
 One group that starts firing opens one incident. The incident is resolved once every
 alert in it is resolved. If the same group fires again later, that is a new incident.
 
-Kept in memory for now: a restart forgets the incidents (they move to SQLite later).
+Kept in memory for now: a restart forgets the incidents (they move to SQLite later), but the
+agent reads the alerts that are still firing from Alertmanager when it starts (app/catchup.py).
 """
 
 from dataclasses import dataclass, field
@@ -37,6 +39,8 @@ class Incident:
     resolved_at: datetime | None = None
     notifications: int = 0
     alerts: dict[str, AlertState] = field(default_factory=dict)
+    # Investigations of this incident (app.investigator.Investigation), oldest first.
+    investigations: list = field(default_factory=list)
 
     @property
     def firing_alerts(self) -> int:
@@ -66,12 +70,12 @@ class IncidentStore:
     def record(self, notification: Notification) -> tuple[Incident, bool]:
         """Applies one notification. Returns the incident and whether it was just opened."""
         now = self._clock()
-        incident_id = self._open_by_group.get(notification.group_key)
+        incident_id = self._open_by_group.get(notification.incident_key)
         opened = incident_id is None
         if opened:
             incident = Incident(
                 id=next(self._ids),
-                group_key=notification.group_key,
+                group_key=notification.incident_key,
                 title=notification.title,
                 status="firing",
                 opened_at=now,

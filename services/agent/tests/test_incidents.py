@@ -113,3 +113,16 @@ def test_resolved_notification_without_an_open_incident_is_kept_as_resolved():
     assert opened
     assert incident.status == "resolved"
     assert store.open_count() == 0
+
+
+def test_incidents_are_matched_by_group_labels_not_group_key():
+    store = IncidentStore()
+    first = notification(alert("payments"))
+    later = notification(alert("payments"))
+    later["groupKey"] = "something-else"  # e.g. rebuilt after an agent restart
+
+    store.record(parse(first))
+    incident, opened = store.record(parse(later))
+
+    assert not opened
+    assert incident.group_key == "alertname=InvalidMessagesReceived,namespace=sentinel"

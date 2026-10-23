@@ -109,6 +109,54 @@ def _trim(obj: dict) -> dict:
     return obj
 
 
+def _revision(rs: dict) -> int:
+    annotations = rs["metadata"].get("annotations") or {}
+    return int(annotations.get("deployment.kubernetes.io/revision", "0"))
+
+
+def _env(container: dict) -> dict[str, str]:
+    env = {}
+    for e in container.get("env") or []:
+        if "value" in e:
+            env[e["name"]] = e["value"]
+        else:
+            source = e.get("valueFrom", {})
+            ref = source.get("secretKeyRef") or source.get("configMapKeyRef") or {}
+            kind = "secret" if "secretKeyRef" in source else "configmap"
+            env[e["name"]] = f"<from {kind} {ref.get('name')}/{ref.get('key')}>"
+    return env
+
+
+def template_changes(old: dict, new: dict) -> list[str]:
+    """What changed in the pod template between two ReplicaSets, in plain words."""
+    changes = []
+    old_spec, new_spec = old["spec"]["template"], new["spec"]["template"]
+    old_ann = old_spec["metadata"].get("annotations") or {}
+    new_ann = new_spec["metadata"].get("annotations") or {}
+    if old_ann.get("checksum/config") != new_ann.get("checksum/config"):
+        changes.append("ConfigMap settings changed (checksum/config annotation)")
+    old_containers = {c["name"]: c for c in old_spec["spec"].get("containers", [])}
+    for c in new_spec["spec"].get("containers", []):
+        name, before = c["name"], old_containers.get(c["name"])
+        if before is None:
+            changes.append(f"container {name} added")
+            continue
+        if before.get("image") != c.get("image"):
+            changes.append(f"{name}: image {before.get('image')} -> {c.get('image')}")
+        old_env, new_env = _env(before), _env(c)
+        for key in sorted(new_env.keys() - old_env.keys()):
+            changes.append(f"{name}: env {key} added = {new_env[key]}")
+        for key in sorted(old_env.keys() - new_env.keys()):
+            changes.append(f"{name}: env {key} removed (was {old_env[key]})")
+        for key in sorted(old_env.keys() & new_env.keys()):
+            if old_env[key] != new_env[key]:
+                changes.append(f"{name}: env {key} changed {old_env[key]} -> {new_env[key]}")
+        for field in ("command", "args", "resources"):
+            if before.get(field) != c.get(field):
+                changes.append(f"{name}: {field} changed {before.get(field)} -> {c.get(field)}")
+    return changes
+
+
 class NoParams(BaseModel):
     pass
 
@@ -127,6 +175,10 @@ class LogParams(BaseModel):
         description="Logs of the previous (crashed) container instead of the current one",
     )
     tail: int = Field(default=50, ge=1, le=300, description="Number of lines from the end")
+
+
+class RolloutParams(BaseModel):
+    deployment: str = Field(description="Deployment name, e.g. payments")
 
 
 class GetParams(BaseModel):
@@ -189,6 +241,47 @@ def kubernetes_tools(api: KubeApi | None, namespace: str, clock=lambda: datetime
             "lines": [line[:400] for line in text.splitlines()],
         }
 
+    async def rollout_diff(p: RolloutParams) -> dict:
+        body = await need_api().get(f"/apis/apps/v1/namespaces/{namespace}/replicasets")
+        owned = [
+            rs
+            for rs in body["items"]
+            if any(
+                o.get("kind") == "Deployment" and o.get("name") == p.deployment
+                for o in rs["metadata"].get("ownerReferences", [])
+            )
+        ]
+        if not owned:
+            raise ToolError(f"no ReplicaSets found for deployment {p.deployment!r}")
+        owned.sort(key=_revision, reverse=True)
+        now = clock()
+
+        def describe(rs: dict) -> dict:
+            status = rs.get("status", {})
+            return {
+                "revision": _revision(rs),
+                "created": _age(rs["metadata"].get("creationTimestamp"), now) + " ago",
+                "replicas": rs["spec"].get("replicas", 0),
+                "ready": status.get("readyReplicas", 0),
+            }
+
+        newest = owned[0]
+        if len(owned) == 1:
+            return {
+                "deployment": p.deployment,
+                "newest": describe(newest),
+                "previous": None,
+                "changes": [],
+                "note": "only one revision exists",
+            }
+        previous = owned[1]
+        return {
+            "deployment": p.deployment,
+            "newest": describe(newest),
+            "previous": describe(previous),
+            "changes": template_changes(previous, newest) or ["no differences in the pod template"],
+        }
+
     async def get(p: GetParams) -> dict:
         path = KINDS.get(p.kind)
         if path is None:
@@ -220,6 +313,14 @@ def kubernetes_tools(api: KubeApi | None, namespace: str, clock=lambda: datetime
             "log of the container that crashed before the current one.",
             LogParams,
             pod_logs,
+        ),
+        Tool(
+            "k8s_rollout_diff",
+            "What changed in a Deployment's latest rollout: compares the newest ReplicaSet with "
+            "the previous one (image, environment variables, command, resources) and shows how "
+            "many pods of each are ready.",
+            RolloutParams,
+            rollout_diff,
         ),
         Tool(
             "k8s_get",

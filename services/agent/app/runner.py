@@ -1,0 +1,45 @@
+"""Starts investigations in the background, one at a time (a local model has one GPU)."""
+
+import asyncio
+from collections.abc import Callable
+from itertools import count
+
+from app.incidents import Incident
+from app.investigator import Investigation, Investigator
+from app.llm import ChatModel
+from app.metrics import INVESTIGATION_SECONDS, INVESTIGATIONS, TOOL_CALLS
+
+
+class InvestigationRunner:
+    def __init__(self, investigator: Investigator, model_factory: Callable[[str], ChatModel]):
+        self.investigator = investigator
+        self.model_factory = model_factory
+        self._ids = count(1)
+        self._one_at_a_time = asyncio.Semaphore(1)
+        self._tasks: set[asyncio.Task] = set()
+
+    def start(self, incident: Incident, model: str) -> Investigation:
+        inv = Investigation(id=next(self._ids), incident_id=incident.id, model=model)
+        incident.investigations.append(inv)
+        task = asyncio.create_task(self._run(incident, inv))
+        self._tasks.add(task)  # keep a reference until it finishes
+        task.add_done_callback(self._tasks.discard)
+        return inv
+
+    async def _run(self, incident: Incident, inv: Investigation) -> None:
+        async with self._one_at_a_time:
+            await self.investigator.run(incident, self.model_factory(inv.model), inv)
+        INVESTIGATIONS.labels(status=inv.status).inc()
+        if inv.started_at and inv.finished_at:
+            INVESTIGATION_SECONDS.observe((inv.finished_at - inv.started_at).total_seconds())
+        for step in inv.steps:
+            TOOL_CALLS.labels(tool=step.tool).inc()
+
+    async def wait(self) -> None:
+        """Waits for every running investigation (used in tests)."""
+        while self._tasks:
+            await asyncio.gather(*list(self._tasks), return_exceptions=True)
+
+    def cancel(self) -> None:
+        for task in self._tasks:
+            task.cancel()

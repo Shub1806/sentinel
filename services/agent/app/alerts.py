@@ -41,6 +41,14 @@ class Notification(BaseModel):
     alerts: list[Alert] = Field(min_length=1)
 
     @property
+    def incident_key(self) -> str:
+        """Which incident this belongs to: the labels Alertmanager grouped by
+        (alertname and namespace). Stable across agent restarts, unlike groupKey."""
+        if not self.group_labels:
+            return self.group_key
+        return ",".join(f"{k}={v}" for k, v in sorted(self.group_labels.items()))
+
+    @property
     def title(self) -> str:
         """A short name for the incident: the alert name, if all alerts in the group share one."""
         return (

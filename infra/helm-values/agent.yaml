@@ -14,6 +14,12 @@ env:
   WATCH_NAMESPACE: sentinel
   PROMETHEUS_URL: http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
   LOKI_URL: http://loki.logging.svc.cluster.local:3100
+  # The model: any OpenAI-compatible chat API. host.k3d.internal is the Mac running k3d,
+  # where a local Ollama server listens on port 11434.
+  LLM_BASE_URL: http://host.k3d.internal:11434/v1
+  LLM_MODEL: qwen3:4b
+  # Small local models have small context windows: keep each tool result short.
+  TOOL_MAX_CHARS: "3000"
 
 metrics:
   enabled: true
