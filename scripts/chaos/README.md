@@ -10,6 +10,7 @@ have enough traffic: `kubectl apply -f infra/chaos/loadgen.yaml`.
 | 3 | S3 outage | `s3-outage.sh` |
 | 4 | Slow consumer: payments falls behind | `slow-consumer.sh` |
 | 5 | Poison messages: a producer sends bad events | `poison-messages.sh` |
+| 6 | Broker outage: Redpanda is down | `broker-outage.sh` |
 
 ## 1. Bad deploy: payments crash-loops
 
@@ -125,3 +126,35 @@ nothing stops; the alert tells you to find the producer.
 
 **Recover:** nothing to undo (`recover` only prints this). The bad messages are committed and skipped;
 `InvalidMessagesReceived` clears 10 minutes after the last one.
+
+## 6. Broker outage: Redpanda is down
+
+**Inject:** `./scripts/chaos/broker-outage.sh inject` scales the Redpanda StatefulSet to 0 and waits for the pod to go.
+Data is on a PersistentVolume, so topics and consumer offsets survive.
+
+**What the services do:** orders saves each order and its event in one database transaction (the outbox), so it
+keeps accepting orders; the relay retries every 0.5 s (each try waits up to 5 s). payments and notifications
+reconnect in-process, waiting 1 s, 2 s, 4 s ... up to 30 s between tries: alive, not ready, no restarts.
+
+**Expected (observed)**
+
+| Signal | Evidence |
+|---|---|
+| Alerts | `OutboxBacklog` pending after about 1.75 min, firing after about 3.75 min (oldest unsent event over 60 s, for 2 min) |
+| Metrics | `POST /orders` stays at 2/s, all 201, no 5xx; `outbox_pending_events` grows by about 2/s and `outbox_oldest_pending_age_seconds` by 1 per second; consumer lag metrics disappear (Redpanda reports them) |
+| Pods | 0 restarts. notifications `0/1` within a minute. A payments pod that was already connected stays `1/1`: its Kafka client retries inside the library and never tells the worker. The autoscaler may add payments pods on the reconnect CPU spike; they wait `0/1` |
+| Logs | orders WARN `outbox relay failed, will retry: Send failed` (about 11 per minute); notifications and any new payments pod WARN `lost connection to Redpanda, reconnecting` with `failures` and `retry_in_ms` (payments: `KafkaConnectionError ... Unable to bootstrap`; notifications: `PLT_KFK_MULTIPLE: joinGroup failed ...`) |
+| Traces | No new `order.created send` spans until recovery |
+
+**Root cause:** the message broker is down. Customers can still order; payments and receipts are delayed, not lost.
+
+**Recover:** `./scripts/chaos/broker-outage.sh recover`. Observed: the outbox (about 600 events after 5 minutes) and
+the consumer backlogs were empty about 80 s after the command (Redpanda startup, plus up to 30 s until each consumer's
+next reconnect try). Extra payments pods scaled away within a minute. Smoke test passed.
+
+**History:** the first run (before the in-process reconnect) showed the same weakness as the first S3 outage:
+notifications' worker stopped, `/healthz` failed and Kubernetes killed it 7 times in 8 minutes; a payments pod added by the
+autoscaler could not connect at startup, was killed the same way, and left its Kafka clients unclosed. Only
+`OutboxBacklog` and `PodRestarted` fired. With the fix, the re-run had 0 restarts and recovered on its own.
+
+**Known gap:** a connected payments pod reports ready while Redpanda is down (see Pods above). It recovers by itself.
