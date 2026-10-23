@@ -1,0 +1,5 @@
+# The namespace the agent investigates. The ServiceAccount itself lives in the
+# release namespace ("agent").
+watchNamespace: sentinel
+
+serviceAccountName: agent
