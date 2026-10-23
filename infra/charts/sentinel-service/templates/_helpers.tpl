@@ -17,3 +17,11 @@ app.kubernetes.io/version: {{ .Values.image.tag | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- end -}}
+
+{{/* Pod labels: like svc.labels, but without the chart version, so a chart change alone
+     doesn't restart every service. */}}
+{{- define "svc.podLabels" -}}
+{{ include "svc.selectorLabels" . }}
+app.kubernetes.io/part-of: sentinel
+app.kubernetes.io/version: {{ .Values.image.tag | quote }}
+{{- end -}}

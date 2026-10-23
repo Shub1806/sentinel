@@ -7,6 +7,10 @@ image:
   pullPolicy: IfNotPresent  # use the image already loaded into the cluster
 
 replicaCount: 1
+
+# Kubernetes identity for the pods. Empty = the namespace's default account, with no
+# API token mounted (none of the services call the Kubernetes API, except the agent).
+serviceAccountName: ""
 port: 8080
 
 # Plain (non-secret) settings. Stored in a ConfigMap, given to the app as environment variables.
