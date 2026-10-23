@@ -50,6 +50,7 @@ tests:
         alertname: OrdersAvailabilityBudgetBurnFast
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: critical
               service: orders
               slo: availability
@@ -70,6 +71,7 @@ tests:
         alertname: OrdersAvailabilityBudgetBurnFast
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: critical
               service: orders
               slo: availability
@@ -93,6 +95,7 @@ tests:
         alertname: OrdersLatencyBudgetBurnFast
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: critical
               service: orders
               slo: latency
@@ -116,6 +119,7 @@ tests:
         alertname: ConsumerLagHigh
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: warning
               redpanda_group: notifications
             exp_annotations:
@@ -138,6 +142,7 @@ tests:
         alertname: PaymentFailureRatioHigh
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: warning
               service: payments
             exp_annotations:
@@ -171,6 +176,7 @@ tests:
         alertname: NotificationErrors
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: warning
               service: notifications
             exp_annotations:
@@ -193,6 +199,7 @@ tests:
         alertname: InvalidMessagesReceived
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: warning
               job: payments
             exp_annotations:
@@ -213,6 +220,7 @@ tests:
         alertname: OutboxBacklog
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: warning
               job: orders
             exp_annotations:
@@ -244,6 +252,7 @@ tests:
         alertname: OutboxBacklog
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: warning
               job: orders
             exp_annotations:
@@ -319,6 +328,7 @@ tests:
         alertname: OrdersAvailabilityBudgetBurnFast
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: critical
               service: orders
               slo: availability
@@ -329,6 +339,7 @@ tests:
         alertname: OrdersAvailabilityBudgetBurnSlow
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: warning
               service: orders
               slo: availability
@@ -349,6 +360,7 @@ tests:
         alertname: OrdersAvailabilityBudgetBurnFast
         exp_alerts:
           - exp_labels:
+              namespace: sentinel
               severity: critical
               service: orders
               slo: availability

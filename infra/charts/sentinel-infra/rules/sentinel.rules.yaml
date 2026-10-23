@@ -69,6 +69,8 @@ groups:
             sum(rate(http_server_requests_seconds_count{namespace="sentinel", method="POST", uri="/orders"}[6h]))
           )
 
+  # Every alert below carries namespace: sentinel (most expressions aggregate it away).
+  # Alertmanager sends alerts with that label to the on-call agent.
   - name: sentinel-slo.alerts
     rules:
       - alert: OrdersAvailabilityBudgetBurnFast
@@ -80,6 +82,7 @@ groups:
           sentinel:orders_post_requests:increase5m >= 10
         for: 2m
         labels:
+          namespace: sentinel
           severity: critical
           service: orders
           slo: availability
@@ -95,6 +98,7 @@ groups:
           sentinel:orders_post_requests:increase30m >= 30
         for: 15m
         labels:
+          namespace: sentinel
           severity: warning
           service: orders
           slo: availability
@@ -110,6 +114,7 @@ groups:
           sentinel:orders_post_requests:increase5m >= 10
         for: 2m
         labels:
+          namespace: sentinel
           severity: critical
           service: orders
           slo: latency
@@ -125,6 +130,7 @@ groups:
           sentinel:orders_post_requests:increase30m >= 30
         for: 15m
         labels:
+          namespace: sentinel
           severity: warning
           service: orders
           slo: latency
@@ -141,6 +147,7 @@ groups:
         expr: sum by (redpanda_group) (redpanda_kafka_consumer_group_lag_sum{namespace="sentinel"}) > 1000
         for: 5m
         labels:
+          namespace: sentinel
           severity: warning
         annotations:
           summary: "Consumer group {{ $labels.redpanda_group }} is falling behind"
@@ -153,6 +160,7 @@ groups:
           > 0.05
         for: 10m
         labels:
+          namespace: sentinel
           severity: warning
           service: payments
         annotations:
@@ -162,6 +170,7 @@ groups:
         expr: sum(rate(notifications_message_errors_total{namespace="sentinel"}[5m])) > 0
         for: 5m
         labels:
+          namespace: sentinel
           severity: warning
           service: notifications
         annotations:
@@ -173,6 +182,7 @@ groups:
           or
           sum by (job) (increase(notifications_messages_processed_total{namespace="sentinel", result="skipped_invalid"}[10m])) > 0
         labels:
+          namespace: sentinel
           severity: warning
         annotations:
           summary: "{{ $labels.job }} skipped invalid messages"
@@ -184,6 +194,7 @@ groups:
         expr: max by (job) (outbox_oldest_pending_age_seconds{namespace="sentinel"}) > 60
         for: 2m
         labels:
+          namespace: sentinel
           severity: warning
         annotations:
           summary: "{{ $labels.job }} outbox is not draining"
@@ -200,6 +211,7 @@ groups:
             kube_pod_owner{namespace="sentinel", owner_kind="Job"}
           ) > 0
         labels:
+          namespace: sentinel
           severity: warning
         annotations:
           summary: "Pod {{ $labels.pod }} restarted"

@@ -48,6 +48,36 @@ prometheus:
         memory: 1Gi
 
 alertmanager:
+  # Only route and receivers are set here; the chart's other defaults (global settings,
+  # inhibit rules, templates) are kept. Lists replace the chart's lists, so the Watchdog
+  # route is repeated.
+  config:
+    route:
+      receiver: "null"
+      group_by: [namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname="Watchdog"
+        # Everything about the sentinel namespace goes to the on-call agent: our own rules
+        # (they all carry namespace: sentinel) and the chart's Kubernetes alerts for its pods.
+        # One incident per alert name; changes are sent within a minute.
+        - receiver: agent
+          matchers:
+            - namespace="sentinel"
+          group_by: [namespace, alertname]
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 4h
+    receivers:
+      - name: "null"
+      - name: agent
+        webhook_configs:
+          - url: http://agent.agent.svc.cluster.local:8003/alerts
+            send_resolved: true
   alertmanagerSpec:
     resources:
       requests:
