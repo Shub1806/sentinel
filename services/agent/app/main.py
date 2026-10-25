@@ -1,6 +1,7 @@
 """FastAPI app: receives Alertmanager webhooks, keeps track of incidents, investigates them."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 
@@ -9,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app import web
+from app.actions import Executor
 from app.alerts import Notification
 from app.catchup import firing_notifications
 from app.config import Settings, load_settings
@@ -19,6 +21,7 @@ from app.logging_setup import configure_logging
 from app.metrics import INCIDENTS_OPENED, NOTIFICATIONS_RECEIVED, OPEN_INCIDENTS
 from app.runner import InvestigationRunner
 from app.storage import Database
+from app.tools.kubernetes import KubeApi
 from app.tools.registry import build_tools
 
 log = logging.getLogger("agent")
@@ -127,6 +130,7 @@ def create_app(
     settings: Settings | None = None,
     runner: InvestigationRunner | None = None,
     catch_up_client=None,
+    executor: Executor | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -147,6 +151,15 @@ def create_app(
         else:
             runner.store = app.state.store
             app.state.runner = runner
+        s = app.state.settings
+        app.state.executor = executor or Executor(
+            KubeApi.in_cluster(30, os.environ),
+            s.namespace,
+            s.agent_namespace,
+            s.actions_account,
+            s.action_targets,
+        )
+        app.state.action_tasks = set()
         log.info(
             "started",
             extra={

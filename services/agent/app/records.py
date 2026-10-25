@@ -28,3 +28,20 @@ class Investigation:
     raw_answer: str = ""
     error: str = ""
     tokens: int = 0
+
+
+@dataclass
+class Action:
+    """A suggested action and what a person decided about it."""
+
+    id: int
+    incident_id: int
+    investigation_id: int
+    kind: str
+    target: str
+    replicas: int | None = None
+    status: str = "running"  # rejected, running, done, failed
+    decided_by: str = ""
+    decided_at: datetime | None = None
+    finished_at: datetime | None = None
+    result: str = ""

@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app.incidents import AlertState, Incident
-from app.records import Investigation, Step
+from app.records import Action, Investigation, Step
 from app.report import Report
 
 SCHEMA = """
@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS investigations (
     incident_id INTEGER NOT NULL REFERENCES incidents(id),
     data        TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS actions (
+    id          INTEGER PRIMARY KEY,
+    incident_id INTEGER NOT NULL REFERENCES incidents(id),
+    data        TEXT NOT NULL
+);
 """
 
 
@@ -36,7 +41,8 @@ def _time(value: str | None) -> datetime | None:
 
 def incident_to_json(incident: Incident) -> str:
     data = asdict(incident)
-    data.pop("investigations")  # stored in their own table
+    data.pop("investigations")  # stored in their own tables
+    data.pop("actions")
     return json.dumps(data, default=str)
 
 
@@ -76,6 +82,21 @@ def investigation_from_json(text: str) -> Investigation:
     )
 
 
+def action_to_json(action: Action) -> str:
+    return json.dumps(asdict(action), default=str)
+
+
+def action_from_json(text: str) -> Action:
+    data = json.loads(text)
+    return Action(
+        **{
+            **data,
+            "decided_at": _time(data["decided_at"]),
+            "finished_at": _time(data["finished_at"]),
+        }
+    )
+
+
 class Database:
     def __init__(self, path: str):
         if path != ":memory:":
@@ -100,8 +121,16 @@ class Database:
                 (inv.id, inv.incident_id, investigation_to_json(inv)),
             )
 
+    def save_action(self, action: Action) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO actions (id, incident_id, data) VALUES (?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET data = excluded.data",
+                (action.id, action.incident_id, action_to_json(action)),
+            )
+
     def load(self) -> list[Incident]:
-        """All incidents, each with its investigations (oldest first)."""
+        """All incidents, each with its investigations and actions (oldest first)."""
         incidents = {
             row[0]: incident_from_json(row[1])
             for row in self.conn.execute("SELECT id, data FROM incidents ORDER BY id")
@@ -110,6 +139,10 @@ class Database:
             inv = investigation_from_json(data)
             if inv.incident_id in incidents:
                 incidents[inv.incident_id].investigations.append(inv)
+        for (data,) in self.conn.execute("SELECT data FROM actions ORDER BY id"):
+            action = action_from_json(data)
+            if action.incident_id in incidents:
+                incidents[action.incident_id].actions.append(action)
         return list(incidents.values())
 
     def close(self) -> None:

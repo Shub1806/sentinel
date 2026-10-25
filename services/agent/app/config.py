@@ -25,6 +25,11 @@ class Settings:
     tool_timeout_seconds: float = 10.0
     # Tool results are cut to this many characters, so one call can't flood the model's context.
     tool_max_chars: int = 6000
+    # Deployments an approved action may change (also enforced by the agent-actions Role).
+    action_targets: tuple[str, ...] = ("orders", "payments", "notifications")
+    # The agent's own namespace, and the ServiceAccount whose short-lived token runs actions.
+    agent_namespace: str = "agent"
+    actions_account: str = "agent-actions"
     # SQLite file for incidents and investigations. Empty = memory only (lost on restart).
     db_path: str = ""
     # Any chat model behind an OpenAI-compatible API (for example a local Ollama server).
@@ -61,6 +66,13 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         tool_timeout_seconds=_positive(env, "TOOL_TIMEOUT_SECONDS", defaults.tool_timeout_seconds),
         tool_max_chars=_positive(env, "TOOL_MAX_CHARS", defaults.tool_max_chars, int),
         db_path=env.get("DB_PATH", "").strip(),
+        action_targets=tuple(
+            t.strip()
+            for t in env.get("ACTION_TARGETS", ",".join(defaults.action_targets)).split(",")
+            if t.strip()
+        ),
+        agent_namespace=env.get("AGENT_NAMESPACE") or defaults.agent_namespace,
+        actions_account=env.get("ACTIONS_ACCOUNT") or defaults.actions_account,
         llm_base_url=(env.get("LLM_BASE_URL") or defaults.llm_base_url).rstrip("/"),
         llm_model=env.get("LLM_MODEL", "").strip(),
         llm_api_key=env.get("LLM_API_KEY", ""),

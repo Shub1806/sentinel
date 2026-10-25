@@ -21,10 +21,26 @@
   <p class="muted small" style="margin:14px 0 4px">evidence</p>
   <ul style="margin:0;padding-left:20px">{% for e in r.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
   {% endif %}
+  {% set a = r.suggested_action %}
   <div class="action">
-    <div>suggested action: <span class="kind">{{ r.suggested_action.kind }}</span>{% if r.suggested_action.target %} <code>{{ r.suggested_action.target }}</code>{% endif %}</div>
-    {% if r.suggested_action.detail %}<div class="small" style="margin-top:4px">{{ r.suggested_action.detail }}</div>{% endif %}
-    <div class="muted small" style="margin-top:6px">Suggestions are not carried out. Approve/Reject comes in the next step.</div>
+    <div>suggested action: <span class="kind">{{ a.kind }}</span>{% if a.target %} <code>{{ a.target }}</code>{% endif %}{% if a.kind == "scale_deployment" and a.replicas is not none %} to <strong>{{ a.replicas }}</strong> pods{% endif %}</div>
+    {% if a.detail %}<div class="small" style="margin-top:4px">{{ a.detail }}</div>{% endif %}
+    {% if decision %}
+      <div style="margin-top:10px"><span class="tag {{ decision.status }}">{{ decision.status }}</span>
+        <span class="small">{{ "approved" if decision.status != "rejected" else "rejected" }} {{ decision.decided_at|utc }} by {{ decision.decided_by }}</span></div>
+      {% if decision.result %}<div class="small" style="margin-top:4px">{{ decision.result }}</div>{% endif %}
+    {% elif a.kind in executable and blocked %}
+      <div class="muted small" style="margin-top:8px">Can't be approved here: {{ blocked }}.</div>
+    {% elif a.kind in executable and shown.status == "done" %}
+      <form class="inline" method="post" action="/ui/incidents/{{ incident.id }}/actions" style="margin-top:10px">
+        <input type="hidden" name="investigation" value="{{ shown.id }}">
+        <button type="submit" name="decision" value="approve">approve and run</button>
+        <button type="submit" name="decision" value="reject" class="secondary">reject</button>
+        <span class="muted small">Runs once, with a 10-minute token that may only change {{ settings.action_targets|join(", ") }}.</span>
+      </form>
+    {% else %}
+      <div class="muted small" style="margin-top:6px">Nothing for the agent to carry out.</div>
+    {% endif %}
   </div>
 </div>
 {% else %}
@@ -61,6 +77,19 @@
       <td class="hide-narrow small">{{ a.annotations.get("summary", "") }}</td></tr>
   {% endfor %}
 </table>
+
+{% if incident.actions %}
+<h2>Actions</h2>
+<table>
+  <tr><th>#</th><th>action</th><th>status</th><th class="hide-narrow">decided</th><th>result</th></tr>
+  {% for act in incident.actions|reverse %}
+  <tr><td>{{ act.id }}</td><td>{{ act.kind }} <code>{{ act.target }}</code>{% if act.replicas is not none %} → {{ act.replicas }}{% endif %}</td>
+      <td><span class="tag {{ act.status }}">{{ act.status }}</span></td>
+      <td class="hide-narrow small">{{ act.decided_at|utc }}<br>{{ act.decided_by }}</td>
+      <td class="small">{{ act.result or "-" }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
 
 {% if incident.investigations|length > 1 %}
 <h2>All investigations</h2>

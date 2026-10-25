@@ -61,6 +61,29 @@ class KubeApi:
             raise ToolError(f"Kubernetes API said {response.status_code}: {response.text[:300]}")
         return response.text if text else response.json()
 
+    async def send(
+        self,
+        method: str,
+        path: str,
+        body,
+        content_type: str = "application/json",
+        token: str | None = None,
+    ) -> dict:
+        """A write request (POST or PATCH). Used only by app/actions.py, after approval.
+        token: a different ServiceAccount's token; default is the pod's own."""
+        bearer = token or self.token_file.read_text().strip()
+        response = await self.client.request(
+            method,
+            self.base_url + path,
+            json=body,
+            headers={"Authorization": f"Bearer {bearer}", "Content-Type": content_type},
+        )
+        if response.status_code == 403:
+            raise ToolError(f"forbidden: {response.json().get('message', '')[:300]}")
+        if response.status_code not in (200, 201):
+            raise ToolError(f"Kubernetes API said {response.status_code}: {response.text[:300]}")
+        return response.json()
+
 
 def _age(timestamp: str | None, now: datetime) -> str | None:
     if not timestamp:

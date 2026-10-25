@@ -49,10 +49,11 @@ When you know enough, answer with ONLY this JSON (no other text):
  "suggested_action": {
    "kind": "restart_deployment | scale_deployment | rollout_undo | none | manual",
    "target": "deployment name, or empty",
+   "replicas": "number of pods, only for scale_deployment",
    "detail": "what exactly, and why"},
  "confidence": "low | medium | high"}
-Use "manual" when a person must fix it some other way (say how in detail), and "none" when \
-no action is needed."""
+A person approves the action before it runs. Use "manual" when a person must fix it some other \
+way (say how in detail), and "none" when no action is needed."""
 
 JSON_ONLY = "Now write the final report as ONLY the JSON object described earlier."
 OUT_OF_STEPS = (

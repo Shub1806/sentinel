@@ -13,6 +13,16 @@ class SuggestedAction(BaseModel):
     kind: str = "manual"
     target: str = ""
     detail: str = ""
+    replicas: int | None = None  # only for scale_deployment
+
+    @field_validator("replicas", mode="before")
+    @classmethod
+    def replica_count(cls, value):
+        try:
+            number = int(value)
+        except TypeError, ValueError:
+            return None
+        return number if 0 <= number <= 10 else None
 
     @field_validator("kind", mode="before")
     @classmethod

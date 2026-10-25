@@ -76,3 +76,20 @@ def test_resolved_incidents_stay_resolved(tmp_path):
 
     assert reloaded.get(1).status == "resolved"
     assert opened  # firing again later is a new incident
+
+
+def test_actions_survive_a_restart_and_a_running_one_is_marked_failed(tmp_path):
+    path = str(tmp_path / "agent.db")
+    store = IncidentStore(db=Database(path))
+    incident, _ = store.record(parse(notification(alert("payments"))))
+    inv = store.new_investigation(incident, "m")
+    inv.report = Report(summary="s")
+    done = store.new_action(incident, inv, status="done", result="ok")
+    store.new_action(incident, inv, status="running")
+
+    reloaded = IncidentStore(db=Database(path))
+    first, second = reloaded.get(1).actions
+
+    assert (first.id, first.status, first.result) == (done.id, "done", "ok")
+    assert second.status == "failed" and "restarted while the action ran" in second.result
+    assert reloaded.new_action(reloaded.get(1), inv).id == 3

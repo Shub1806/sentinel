@@ -4,6 +4,8 @@ Server-rendered HTML, no JavaScript. Open it through the tunnel:
 kubectl -n agent port-forward svc/agent 18003:8003, then http://localhost:18003/
 """
 
+import asyncio
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -12,6 +14,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.actions import EXECUTABLE, ActionError, why_not
+from app.metrics import ACTIONS
+
+log = logging.getLogger("agent.actions")
 router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
@@ -36,7 +42,13 @@ templates.env.globals["duration"] = _duration
 
 
 def _busy(incidents) -> bool:
-    return any(i.status in ("queued", "running") for inc in incidents for i in inc.investigations)
+    return any(
+        i.status in ("queued", "running") for inc in incidents for i in inc.investigations
+    ) or any(a.status == "running" for inc in incidents for a in inc.actions)
+
+
+def _decision_for(incident, inv):
+    return next((a for a in incident.actions if a.investigation_id == inv.id), None)
 
 
 def _latest_report(incident):
@@ -67,12 +79,20 @@ async def incident_page(request: Request, incident_id: int):
     incident = request.app.state.store.get(incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="incident not found")
+    shown = _latest_report(incident)
+    blocked = None
+    if shown and shown.report:
+        a = shown.report.suggested_action
+        blocked = why_not(a.kind, a.target, a.replicas, request.app.state.settings.action_targets)
     return templates.TemplateResponse(
         request,
         "incident.html",
         {
             "incident": incident,
-            "shown": _latest_report(incident),
+            "shown": shown,
+            "decision": _decision_for(incident, shown) if shown else None,
+            "blocked": blocked,
+            "executable": EXECUTABLE,
             "refresh": _busy([incident]),
             "settings": request.app.state.settings,
         },
@@ -89,4 +109,77 @@ async def investigate_from_page(request: Request, incident_id: int):
     if not model:
         raise HTTPException(status_code=409, detail="no model configured (set LLM_MODEL)")
     request.app.state.runner.start(incident, model)
+    return RedirectResponse(f"/ui/incidents/{incident_id}", status_code=303)
+
+
+async def _carry_out(app, action) -> None:
+    store = app.state.store
+    try:
+        action.result = await app.state.executor.run(action.kind, action.target, action.replicas)
+        action.status = "done"
+    except ActionError as exc:
+        action.status, action.result = "failed", str(exc)
+    action.finished_at = datetime.now(UTC)
+    store.save_action(action)
+    ACTIONS.labels(kind=action.kind, status=action.status).inc()
+    log.info(
+        "action finished",
+        extra={"action_id": action.id, "status": action.status, "result": action.result},
+    )
+
+
+@router.post("/ui/incidents/{incident_id}/actions")
+async def decide(request: Request, incident_id: int):
+    """Approve or reject the action suggested by one investigation. Each can be decided once."""
+    app = request.app
+    incident = app.state.store.get(incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="incident not found")
+    form = parse_qs((await request.body()).decode())
+    decision = form.get("decision", [""])[0]
+    try:
+        investigation_id = int(form.get("investigation", ["0"])[0])
+    except ValueError:
+        investigation_id = 0
+    inv = next((i for i in incident.investigations if i.id == investigation_id), None)
+    if inv is None or inv.report is None:
+        raise HTTPException(status_code=400, detail="no report to act on")
+    if decision not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="decision must be approve or reject")
+    if _decision_for(incident, inv):
+        raise HTTPException(status_code=409, detail="this suggestion was already decided")
+    suggested = inv.report.suggested_action
+    if suggested.kind not in EXECUTABLE:
+        raise HTTPException(status_code=400, detail="nothing to carry out for this suggestion")
+    reason = why_not(
+        suggested.kind, suggested.target, suggested.replicas, app.state.settings.action_targets
+    )
+    if decision == "approve" and reason:
+        raise HTTPException(status_code=400, detail=reason)
+
+    who = f"page ({request.client.host if request.client else 'unknown'})"
+    now = datetime.now(UTC)
+    if decision == "reject":
+        action = app.state.store.new_action(
+            incident, inv, status="rejected", decided_by=who, decided_at=now, finished_at=now
+        )
+        ACTIONS.labels(kind=action.kind, status="rejected").inc()
+    else:
+        action = app.state.store.new_action(
+            incident, inv, status="running", decided_by=who, decided_at=now
+        )
+        task = asyncio.create_task(_carry_out(app, action))
+        app.state.action_tasks.add(task)
+        task.add_done_callback(app.state.action_tasks.discard)
+    log.info(
+        "action " + ("approved" if decision == "approve" else "rejected"),
+        extra={
+            "action_id": action.id,
+            "incident_id": incident.id,
+            "kind": action.kind,
+            "target": action.target,
+            "replicas": action.replicas,
+            "decided_by": who,
+        },
+    )
     return RedirectResponse(f"/ui/incidents/{incident_id}", status_code=303)

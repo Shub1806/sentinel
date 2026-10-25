@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from itertools import count
 
 from app.alerts import Alert, Notification
-from app.records import Investigation
+from app.records import Action, Investigation
 
 
 @dataclass
@@ -43,6 +43,8 @@ class Incident:
     alerts: dict[str, AlertState] = field(default_factory=dict)
     # Investigations of this incident, oldest first.
     investigations: list[Investigation] = field(default_factory=list)
+    # Decisions on suggested actions, oldest first.
+    actions: list[Action] = field(default_factory=list)
 
     @property
     def firing_alerts(self) -> int:
@@ -68,7 +70,7 @@ class IncidentStore:
         self._db = db
         self._incidents: dict[int, Incident] = {}
         self._open_by_group: dict[str, int] = {}
-        last_incident = last_investigation = 0
+        last_incident = last_investigation = last_action = 0
         for incident in db.load() if db else []:
             self._incidents[incident.id] = incident
             if incident.status == "firing":
@@ -80,8 +82,15 @@ class IncidentStore:
                     # The agent stopped while this was in progress; it will not continue.
                     inv.status, inv.error = "failed", "the agent restarted before it finished"
                     db.save_investigation(inv)
+            for action in incident.actions:
+                last_action = max(last_action, action.id)
+                if action.status == "running":
+                    action.status = "failed"
+                    action.result = "the agent restarted while the action ran; check the deployment"
+                    db.save_action(action)
         self._ids = count(last_incident + 1)
         self._investigation_ids = count(last_investigation + 1)
+        self._action_ids = count(last_action + 1)
 
     def record(self, notification: Notification) -> tuple[Incident, bool]:
         """Applies one notification. Returns the incident and whether it was just opened."""
@@ -124,6 +133,25 @@ class IncidentStore:
     def save_investigation(self, inv: Investigation) -> None:
         if self._db:
             self._db.save_investigation(inv)
+
+    def new_action(self, incident: Incident, inv: Investigation, **fields) -> Action:
+        suggested = inv.report.suggested_action
+        action = Action(
+            id=next(self._action_ids),
+            incident_id=incident.id,
+            investigation_id=inv.id,
+            kind=suggested.kind,
+            target=suggested.target,
+            replicas=suggested.replicas,
+            **fields,
+        )
+        incident.actions.append(action)
+        self.save_action(action)
+        return action
+
+    def save_action(self, action: Action) -> None:
+        if self._db:
+            self._db.save_action(action)
 
     def get(self, incident_id: int) -> Incident | None:
         return self._incidents.get(incident_id)

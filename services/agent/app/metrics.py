@@ -39,3 +39,9 @@ TOOL_CALLS = Counter(
     "Tool calls made during investigations, by tool.",
     ["tool"],
 )
+
+ACTIONS = Counter(
+    "agent_actions",  # exported as agent_actions_total
+    "Decisions on suggested actions, by kind and outcome (rejected, done, failed).",
+    ["kind", "status"],
+)
