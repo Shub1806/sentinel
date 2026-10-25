@@ -42,9 +42,13 @@ templates.env.globals["duration"] = _duration
 
 
 def _busy(incidents) -> bool:
-    return any(
-        i.status in ("queued", "running") for inc in incidents for i in inc.investigations
-    ) or any(a.status == "running" for inc in incidents for a in inc.actions)
+    return (
+        any(i.status in ("queued", "running") for inc in incidents for i in inc.investigations)
+        or any(a.status == "running" for inc in incidents for a in inc.actions)
+        or any(
+            inc.postmortem and inc.postmortem.status in ("queued", "writing") for inc in incidents
+        )
+    )
 
 
 def _decision_for(incident, inv):
@@ -182,4 +186,19 @@ async def decide(request: Request, incident_id: int):
             "decided_by": who,
         },
     )
+    return RedirectResponse(f"/ui/incidents/{incident_id}", status_code=303)
+
+
+@router.post("/ui/incidents/{incident_id}/postmortem")
+async def postmortem_again(request: Request, incident_id: int):
+    """Writes the post-mortem again (for example after another investigation or action)."""
+    incident = request.app.state.store.get(incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="incident not found")
+    if incident.status != "resolved":
+        raise HTTPException(status_code=409, detail="the incident is still firing")
+    pm = incident.postmortem
+    if pm and pm.status in ("queued", "writing"):
+        raise HTTPException(status_code=409, detail="a post-mortem is already being written")
+    request.app.state.runner.start_postmortem(incident, request.app.state.settings.llm_model)
     return RedirectResponse(f"/ui/incidents/{incident_id}", status_code=303)

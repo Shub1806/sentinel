@@ -108,6 +108,8 @@ def handle_notification(app: FastAPI, notification: Notification, source: str) -
     model = app.state.settings.llm_model
     if opened and incident.status == "firing" and model:
         app.state.runner.start(incident, model)
+    if incident.status == "resolved" and incident.postmortem is None:
+        app.state.runner.start_postmortem(incident, model)
     return incident
 
 
@@ -216,6 +218,18 @@ def create_app(
             raise HTTPException(status_code=409, detail="no model configured (set LLM_MODEL)")
         inv = app.state.runner.start(incident, chosen)
         return {"incident_id": incident.id, "investigation_id": inv.id, "model": chosen}
+
+    @app.get("/incidents/{incident_id}/postmortem.md")
+    async def postmortem_markdown(incident_id: int) -> Response:
+        incident = _incident_or_404(incident_id)
+        pm = incident.postmortem
+        if pm is None or pm.status != "done":
+            raise HTTPException(status_code=404, detail="no post-mortem yet")
+        return Response(
+            pm.markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'inline; filename="incident-{incident_id}.md"'},
+        )
 
     @app.get("/healthz")
     async def healthz() -> dict:

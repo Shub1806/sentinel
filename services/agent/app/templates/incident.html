@@ -5,6 +5,22 @@
 <h1>#{{ incident.id }} {{ incident.title }} <span class="tag {{ incident.status }}">{{ incident.status }}</span></h1>
 <p class="muted small">opened {{ incident.opened_at|utc }}{% if incident.resolved_at %} · resolved {{ incident.resolved_at|utc }}{% endif %} · lasted {{ duration(incident.opened_at, incident.resolved_at) }} · {{ incident.notifications }} notification(s)</p>
 
+{% set pm = incident.postmortem %}
+{% if pm or incident.status == "resolved" %}
+<h2>Post-mortem</h2>
+{% if pm and pm.status == "done" %}
+<p class="small"><a href="/incidents/{{ incident.id }}/postmortem.md">download as Markdown</a>{% if pm.error %} · <span class="muted">{{ pm.error }}</span>{% endif %}</p>
+<pre class="postmortem">{{ pm.markdown }}</pre>
+{% elif pm %}
+<p><span class="tag {{ 'running' if pm.status in ('queued', 'writing') else pm.status }}">{{ pm.status }}</span> {{ pm.error }}</p>
+{% endif %}
+{% if incident.status == "resolved" and not (pm and pm.status in ("queued", "writing")) %}
+<form class="inline" method="post" action="/ui/incidents/{{ incident.id }}/postmortem" style="margin-top:8px">
+  <button type="submit" class="secondary">{{ "write again" if pm else "write post-mortem" }}</button>
+</form>
+{% endif %}
+{% endif %}
+
 <h2>Report</h2>
 {% if not shown %}
 <p class="muted">Not investigated{% if not settings.llm_model %} (no model configured){% endif %}.</p>

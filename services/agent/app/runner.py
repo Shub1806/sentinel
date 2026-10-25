@@ -1,8 +1,11 @@
-"""Starts investigations in the background, one at a time (a local model has one GPU)."""
+"""Starts investigations and post-mortems in the background, one at a time (a local model
+has one GPU)."""
 
 import asyncio
 from collections.abc import Callable
+from datetime import UTC, datetime
 
+from app import postmortem
 from app.incidents import Incident, IncidentStore
 from app.investigator import Investigation, Investigator
 from app.llm import ChatModel
@@ -40,8 +43,21 @@ class InvestigationRunner:
         for step in inv.steps:
             TOOL_CALLS.labels(tool=step.tool).inc()
 
+    def start_postmortem(self, incident: Incident, model: str) -> None:
+        """Writes the post-mortem; with an empty model name, facts only."""
+        self.store.new_postmortem(incident)
+        task = asyncio.create_task(self._write_postmortem(incident, model))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _write_postmortem(self, incident: Incident, model: str) -> None:
+        async with self._one_at_a_time:
+            chat = self.model_factory(model) if model else None
+            await postmortem.write(incident, incident.postmortem, chat, lambda: datetime.now(UTC))
+        self.store.save_postmortem(incident.postmortem)
+
     async def wait(self) -> None:
-        """Waits for every running investigation (used in tests)."""
+        """Waits for every running investigation and post-mortem (used in tests)."""
         while self._tasks:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 

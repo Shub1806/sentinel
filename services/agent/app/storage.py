@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app.incidents import AlertState, Incident
-from app.records import Action, Investigation, Step
+from app.records import Action, Investigation, Postmortem, Step
 from app.report import Report
 
 SCHEMA = """
@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS incidents (
 CREATE TABLE IF NOT EXISTS investigations (
     id          INTEGER PRIMARY KEY,
     incident_id INTEGER NOT NULL REFERENCES incidents(id),
+    data        TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS postmortems (
+    incident_id INTEGER PRIMARY KEY REFERENCES incidents(id),
     data        TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS actions (
@@ -43,6 +47,7 @@ def incident_to_json(incident: Incident) -> str:
     data = asdict(incident)
     data.pop("investigations")  # stored in their own tables
     data.pop("actions")
+    data.pop("postmortem")
     return json.dumps(data, default=str)
 
 
@@ -97,6 +102,11 @@ def action_from_json(text: str) -> Action:
     )
 
 
+def postmortem_from_json(text: str) -> Postmortem:
+    data = json.loads(text)
+    return Postmortem(**{**data, "generated_at": _time(data["generated_at"])})
+
+
 class Database:
     def __init__(self, path: str):
         if path != ":memory:":
@@ -129,6 +139,14 @@ class Database:
                 (action.id, action.incident_id, action_to_json(action)),
             )
 
+    def save_postmortem(self, pm: Postmortem) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO postmortems (incident_id, data) VALUES (?, ?) "
+                "ON CONFLICT(incident_id) DO UPDATE SET data = excluded.data",
+                (pm.incident_id, json.dumps(asdict(pm), default=str)),
+            )
+
     def load(self) -> list[Incident]:
         """All incidents, each with its investigations and actions (oldest first)."""
         incidents = {
@@ -143,6 +161,10 @@ class Database:
             action = action_from_json(data)
             if action.incident_id in incidents:
                 incidents[action.incident_id].actions.append(action)
+        for (data,) in self.conn.execute("SELECT data FROM postmortems"):
+            pm = postmortem_from_json(data)
+            if pm.incident_id in incidents:
+                incidents[pm.incident_id].postmortem = pm
         return list(incidents.values())
 
     def close(self) -> None:

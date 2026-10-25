@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from itertools import count
 
 from app.alerts import Alert, Notification
-from app.records import Action, Investigation
+from app.records import Action, Investigation, Postmortem
 
 
 @dataclass
@@ -45,6 +45,8 @@ class Incident:
     investigations: list[Investigation] = field(default_factory=list)
     # Decisions on suggested actions, oldest first.
     actions: list[Action] = field(default_factory=list)
+    # Written when the incident resolves.
+    postmortem: Postmortem | None = None
 
     @property
     def firing_alerts(self) -> int:
@@ -88,6 +90,10 @@ class IncidentStore:
                     action.status = "failed"
                     action.result = "the agent restarted while the action ran; check the deployment"
                     db.save_action(action)
+            pm = incident.postmortem
+            if pm and pm.status in ("queued", "writing"):
+                pm.status, pm.error = "failed", "the agent restarted before it finished"
+                db.save_postmortem(pm)
         self._ids = count(last_incident + 1)
         self._investigation_ids = count(last_investigation + 1)
         self._action_ids = count(last_action + 1)
@@ -133,6 +139,15 @@ class IncidentStore:
     def save_investigation(self, inv: Investigation) -> None:
         if self._db:
             self._db.save_investigation(inv)
+
+    def new_postmortem(self, incident: Incident) -> Postmortem:
+        incident.postmortem = Postmortem(incident_id=incident.id)
+        self.save_postmortem(incident.postmortem)
+        return incident.postmortem
+
+    def save_postmortem(self, pm: Postmortem) -> None:
+        if self._db:
+            self._db.save_postmortem(pm)
 
     def new_action(self, incident: Incident, inv: Investigation, **fields) -> Action:
         suggested = inv.report.suggested_action

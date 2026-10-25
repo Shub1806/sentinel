@@ -45,3 +45,18 @@ class Action:
     decided_at: datetime | None = None
     finished_at: datetime | None = None
     result: str = ""
+
+
+@dataclass
+class Postmortem:
+    """Written when an incident resolves: facts from the record, plus an optional narrative."""
+
+    incident_id: int
+    status: str = "queued"  # queued, writing, done
+    model: str = ""  # empty = no narrative (no model, or the model failed)
+    generated_at: datetime | None = None
+    what_happened: str = ""
+    impact: str = ""
+    follow_ups: list[str] = field(default_factory=list)
+    markdown: str = ""
+    error: str = ""
