@@ -181,8 +181,19 @@ def pct(values: list[bool]) -> str:
     )
 
 
+def _cause(row: dict) -> str:
+    report = ((row.get("investigation") or {}).get("report")) or {}
+    text = (report.get("likely_cause") or "-").replace("|", "/").replace("\n", " ")
+    return text if len(text) <= 120 else text[:117] + "..."
+
+
 def report() -> str:
-    rows = [json.loads(p.read_text()) for p in sorted(RESULTS.glob("*.json"))]
+    rows = []
+    for path in sorted(RESULTS.glob("*.json")):
+        row = json.loads(path.read_text())
+        # Score again from the saved answer, so a change to the ground truth applies to old runs.
+        row.update(score(SCENARIOS[row["scenario"]], row["investigation"]))
+        rows.append(row)
     lines = [
         "| Scenario | Runs | Agent: cause | Agent: action | Baseline: cause | Baseline: action "
         "| Time to report (median) |",
@@ -211,9 +222,15 @@ def report() -> str:
             f"| {pct([r['baseline_cause_ok'] for r in rows])} "
             f"| {pct([r['baseline_action_ok'] for r in rows])} | |"
         )
-    lines += ["", "| Run | Agent suggested | Baseline suggested | Timed out |", "|---|---|---|---|"]
     lines += [
-        f"| {r['scenario']}-{r['run']} | {r['agent_action']} | {r['baseline_action']} "
+        "",
+        "| Run | Agent's cause | Agent suggested | Baseline suggested | Timed out |",
+        "|---|---|---|---|---|",
+    ]
+    lines += [
+        f"| {r['scenario']}-{r['run']} | {_cause(r)} {'✓' if r['agent_cause_ok'] else '✗'} "
+        f"| {r['agent_action']} {'✓' if r['agent_action_ok'] else '✗'} "
+        f"| {r['baseline_action']} {'✓' if r['baseline_action_ok'] else '✗'} "
         f"| {'yes' if r['timed_out'] else ''} |"
         for r in rows
     ]

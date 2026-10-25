@@ -13,6 +13,8 @@ class Scenario:
     loadgen: bool  # needs order traffic for its alerts to fire
     alerts: tuple[str, ...]  # the incident to score is the first one opened for one of these
     cause_words: tuple[str, ...]  # a correct cause mentions at least one (case-insensitive)
+    # ...and none of these: red herrings for this scenario (e.g. a healthy recent rollout).
+    wrong_words: tuple[str, ...]
     actions: tuple[tuple[str, str], ...]  # correct suggestions: (kind, target); "" = any target
     timeout_min: int  # from inject until a finished investigation is expected
 
@@ -28,6 +30,7 @@ SCENARIOS = {
             False,
             ("PodRestarted", "KubePodCrashLooping", "KubePodNotReady"),
             ("MAX_AMOUNT_CENTS",),
+            (),
             (("rollout_undo", "payments"),),
             8,
         ),
@@ -43,6 +46,7 @@ SCENARIOS = {
                 "OrdersLatencyBudgetBurnFast",
             ),
             ("database", "postgres", "orders-db", "hibernat"),
+            ("rollout", "MAX_AMOUNT_CENTS"),
             (("manual", ""),),
             18,
         ),
@@ -54,6 +58,7 @@ SCENARIOS = {
             True,
             ("NotificationErrors",),
             ("s3", "localstack"),
+            ("rollout", "MAX_AMOUNT_CENTS"),
             (("manual", ""),),
             12,
         ),
@@ -65,6 +70,7 @@ SCENARIOS = {
             True,
             ("ConsumerLagHigh",),
             ("PROCESSING_DELAY_MS", "delay", "slow"),
+            ("MAX_AMOUNT_CENTS",),
             (("rollout_undo", "payments"), ("manual", "")),
             25,
         ),
@@ -75,7 +81,16 @@ SCENARIOS = {
             (),
             False,
             ("InvalidMessagesReceived",),
-            ("invalid", "producer", "validation", "malformed"),
+            (
+                "producer",
+                "invalid message",
+                "invalid event",
+                "invalid order.created",
+                "invalid payment.done",
+                "malformed",
+                "validation",
+            ),
+            ("rollout", "MAX_AMOUNT_CENTS"),
             (("none", ""), ("manual", "")),
             5,
         ),
@@ -87,6 +102,7 @@ SCENARIOS = {
             True,
             ("OutboxBacklog",),
             ("redpanda", "broker", "kafka"),
+            ("rollout", "MAX_AMOUNT_CENTS"),
             (("manual", ""),),
             10,
         ),
@@ -96,7 +112,9 @@ SCENARIOS = {
 
 def cause_ok(scenario: Scenario, text: str) -> bool:
     text = text.lower()
-    return any(word.lower() in text for word in scenario.cause_words)
+    right = any(word.lower() in text for word in scenario.cause_words)
+    wrong = any(word.lower() in text for word in scenario.wrong_words)
+    return right and not wrong
 
 
 def action_ok(scenario: Scenario, kind: str, target: str) -> bool:

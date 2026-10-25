@@ -17,6 +17,13 @@ def test_scoring_rules():
     assert not action_ok(bad, "rollout_undo", "orders")
     poison = SCENARIOS["poison"]
     assert action_ok(poison, "none", "") and action_ok(poison, "manual", "anything")
+    # The real first evaluation answer: blames a healthy rollout; contains "invalid" but is wrong.
+    assert not cause_ok(
+        poison,
+        "Payments deployment's latest rollout removed the MAX_AMOUNT_CENTS environment "
+        "variable, causing invalid order amounts to be processed",
+    )
+    assert cause_ok(poison, "A producer sent invalid order.created messages")
 
 
 class Fake:
@@ -107,7 +114,10 @@ def test_report_table(fake, tmp_path):
         "| Bad deploy: payments crash-loops | 1 | 100% (1/1) | 0% (0/1) | 100% (1/1) | 100% (1/1) |"
         in text
     )
-    assert "| bad-deploy-1 | restart_deployment payments | rollout_undo payments |  |" in text
+    assert (
+        "| bad-deploy-1 | MAX_AMOUNT_CENTS=abc in the latest rollout ✓ "
+        "| restart_deployment payments ✗ | rollout_undo payments ✓ |  |"
+    ) in text
     assert (tmp_path / "summary.md").exists()
 
 
