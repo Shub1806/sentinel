@@ -1,0 +1,62 @@
+# The account that carries out approved actions. No pod runs as it, and no token is stored:
+# the agent asks for a short-lived one only after a person approves.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.actionsAccountName }}
+  namespace: {{ .Release.Namespace }}
+automountServiceAccountToken: false
+---
+# What an approved action may do: read and patch the allow-listed Deployments (restart,
+# rollout undo) and their scale. Nothing else: no create or delete, no other kinds,
+# no other namespace, no secrets.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-actions
+  namespace: {{ .Values.watchNamespace }}
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, deployments/scale]
+    resourceNames: {{ toJson .Values.actionTargets }}
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-actions
+  namespace: {{ .Values.watchNamespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.actionsAccountName }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-actions
+---
+# The agent's own account may request a token for the actions account, and nothing more.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: agent-request-actions-token
+  namespace: {{ .Release.Namespace }}
+rules:
+  - apiGroups: [""]
+    resources: [serviceaccounts/token]
+    resourceNames: [{{ .Values.actionsAccountName }}]
+    verbs: [create]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: agent-request-actions-token
+  namespace: {{ .Release.Namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccountName }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: agent-request-actions-token

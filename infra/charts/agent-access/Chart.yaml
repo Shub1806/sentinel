@@ -1,5 +1,5 @@
 apiVersion: v2
 name: agent-access
-description: Kubernetes permissions for the on-call agent - read-only access to the watched namespace.
+description: Kubernetes permissions for the on-call agent - read-only access, plus a separate account for approved actions.
 type: application
-version: 0.1.0
+version: 0.2.0

@@ -1,5 +1,11 @@
-# The namespace the agent investigates. The ServiceAccount itself lives in the
+# The namespace the agent investigates. The ServiceAccounts themselves live in the
 # release namespace ("agent").
 watchNamespace: sentinel
 
 serviceAccountName: agent
+
+# Second account, used only to carry out an approved action. The agent never holds its
+# credentials until a person approves: then it requests a token that expires in 10 minutes.
+actionsAccountName: agent-actions
+# The only Deployments it may change (must match ACTION_TARGETS in infra/helm-values/agent.yaml).
+actionTargets: [orders, payments, notifications]

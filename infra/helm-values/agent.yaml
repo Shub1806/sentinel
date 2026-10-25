@@ -24,6 +24,9 @@ persistence:
 env:
   DB_PATH: /data/agent.db
   WATCH_NAMESPACE: sentinel
+  # Deployments an approved action may change (the agent-actions Role allows only these).
+  ACTION_TARGETS: orders,payments,notifications
+  AGENT_NAMESPACE: agent
   PROMETHEUS_URL: http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
   LOKI_URL: http://loki.logging.svc.cluster.local:3100
   # The model: any OpenAI-compatible chat API. host.k3d.internal is the Mac running k3d,
