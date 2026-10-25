@@ -11,7 +11,7 @@ from app.incidents import IncidentStore
 from app.investigator import Investigator
 from app.llm import ModelError, Reply
 from app.main import create_app
-from app.records import Postmortem
+from app.records import Postmortem, Step
 from app.report import Report, SuggestedAction
 from app.runner import InvestigationRunner
 from app.storage import Database
@@ -45,6 +45,23 @@ def resolved_incident():
     incident, _ = store.record(Notification.model_validate(body))
     inv = store.new_investigation(incident, "qwen3:4b")
     inv.status, inv.started_at, inv.finished_at = "done", T0, T0 + timedelta(minutes=1)
+    inv.steps.append(
+        Step(
+            "k8s_rollout_diff",
+            {"deployment": "payments"},
+            json.dumps(
+                {
+                    "deployment": "payments",
+                    "newest": {"revision": 2, "created": "1m ago", "replicas": 1, "ready": 0},
+                    "previous": {"revision": 1, "created": "3h ago", "replicas": 1, "ready": 1},
+                    "changes": ["payments: env MAX_AMOUNT_CENTS added = abc"],
+                    "new_pods_healthy": False,
+                }
+            ),
+            0.03,
+            auto=True,
+        )
+    )
     inv.report = Report(
         summary="payments crash-loops",
         likely_cause="MAX_AMOUNT_CENTS=abc in the latest rollout",
@@ -122,7 +139,7 @@ def test_with_a_narrative():
     pm = write(incident, model)
 
     assert pm.status == "done" and pm.model == "qwen3:4b" and pm.error == ""
-    assert len(pm.follow_ups) == 4  # capped
+    assert pm.follow_ups == ["Validate settings before rollout", "b", "c", "d"]  # capped at 4
     md = pm.markdown
     assert md.startswith("# Post-mortem: #1 InvalidMessagesReceived")
     assert "## What happened\n\nA bad setting broke payments" in md
@@ -240,3 +257,23 @@ def test_resolved_incident_without_one_offers_the_button():
         after = client.get("/ui/incidents/1").text
     assert "write post-mortem" in page
     assert "download as Markdown" in after and "write again" in after
+
+
+def test_the_model_gets_durations_and_the_rollout_state():
+    _, incident = resolved_incident()
+
+    text = postmortem.facts_text(incident)
+
+    assert "Durations:\n- alert fired → incident opened: 30 s" in text
+    assert "- incident opened → fix carried out: 4 min 19 s" in text
+    assert (
+        "- payments: newest revision 2 had 0/1 pods ready; previous revision 1 had 1/1 ready "
+        "(still serving); changes: payments: env MAX_AMOUNT_CENTS added = abc"
+    ) in text
+
+
+def test_repeated_follow_ups_are_dropped():
+    from app.postmortem import Narrative
+
+    n = Narrative(what_happened="x", follow_ups=["Add a check", "add a check ", "Other", ""])
+    assert n.follow_ups == ["Add a check", "Other"]

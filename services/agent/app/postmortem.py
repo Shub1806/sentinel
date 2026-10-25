@@ -15,11 +15,18 @@ from app.records import Postmortem
 log = logging.getLogger("agent.postmortem")
 
 NARRATIVE_PROMPT = """You write short, blameless post-mortems for "sentinel", a small order \
-system on Kubernetes. You get the incident's timeline, the investigation report and the actions \
-taken. Use only these facts. Answer with ONLY this JSON:
+system on Kubernetes. You get the incident's timeline, durations, rollout state, the \
+investigation report and the actions taken. Use only these facts.
+- Take durations only from the Durations section. Alerts clear several minutes after a fix,
+  because their rules look back over a time window: the alert clearing is NOT the end of the
+  impact.
+- If the previous revision was still serving, users were not affected by the failed rollout;
+  only the release was stuck. Say so.
+- Follow-ups must be different from each other (no rewording of the same idea), at most 4.
+Answer with ONLY this JSON:
 {"what_happened": "3-5 plain sentences: the problem, the cause, how it was found and fixed",
- "impact": "1-2 sentences: who or what was affected and for how long",
- "follow_ups": ["concrete improvement to prevent or detect this sooner", "... (at most 4)"]}"""
+ "impact": "1-2 sentences: who or what was affected, and for how long",
+ "follow_ups": ["concrete improvement to prevent or detect this sooner", "..."]}"""
 
 
 class Narrative(BaseModel):
@@ -32,7 +39,11 @@ class Narrative(BaseModel):
     def at_most_four(cls, value):
         if isinstance(value, str):
             value = [value]
-        return [str(v) for v in (value or [])][:4]
+        unique: list[str] = []
+        for item in (str(v).strip() for v in (value or [])):
+            if item and item.lower() not in {u.lower() for u in unique}:
+                unique.append(item)
+        return unique[:4]
 
 
 def _when(value: datetime | None) -> str:
@@ -102,10 +113,46 @@ def durations(incident: Incident) -> dict[str, str | None]:
     }
 
 
+def rollout_facts(incident: Incident) -> list[str]:
+    """What the rollout diffs collected during the investigation showed, in plain words."""
+    lines = []
+    seen = set()
+    for inv in incident.investigations:
+        for step in inv.steps:
+            if step.tool != "k8s_rollout_diff" or step.result.startswith("error"):
+                continue
+            try:
+                diff = json.loads(step.result)
+            except ValueError:
+                continue
+            name, new, old = diff.get("deployment"), diff.get("newest"), diff.get("previous")
+            if not name or not new or name in seen:
+                continue
+            seen.add(name)
+            line = (
+                f"- {name}: newest revision {new['revision']} had {new['ready']}/"
+                f"{new['replicas']} pods ready"
+            )
+            if old:
+                serving = old["ready"] > 0
+                line += (
+                    f"; previous revision {old['revision']} had {old['ready']}/{old['replicas']}"
+                    f" ready{' (still serving)' if serving else ''}"
+                )
+            changes = "; ".join(diff.get("changes", []))
+            lines.append(line + (f"; changes: {changes}" if changes else ""))
+    return lines
+
+
 def facts_text(incident: Incident) -> str:
-    """The timeline and the report, as plain text for the model."""
+    """The timeline, durations, rollout state and report, as plain text for the model."""
     lines = [f"Incident #{incident.id}: {incident.title}", "Timeline (UTC):"]
     lines += [f"- {_when(t)} {text}" for t, text in timeline(incident)]
+    lines += ["", "Durations:"]
+    lines += [f"- {name}: {value or 'n/a'}" for name, value in durations(incident).items()]
+    rollouts = rollout_facts(incident)
+    if rollouts:
+        lines += ["", "Rollout state seen during the investigation:"] + rollouts
     inv = _first_report(incident)
     if inv:
         r = inv.report
