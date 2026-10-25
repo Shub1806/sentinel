@@ -13,6 +13,12 @@ replicaCount: 1
 serviceAccountName: ""
 port: 8080
 
+# How the Service is reached. NodePort + a fixed nodePort lets k3d publish it on the Mac
+# (see infra/k3d/cluster.yaml); only the agent uses that.
+service:
+  type: ClusterIP
+  nodePort: null
+
 # Plain (non-secret) settings. Stored in a ConfigMap, given to the app as environment variables.
 env: {}
 

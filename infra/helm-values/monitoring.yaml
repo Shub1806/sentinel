@@ -31,6 +31,10 @@ defaultRules:
     PrometheusMissingRuleEvaluations: true
 
 prometheus:
+  # Reached at http://localhost:9090 through a fixed k3d port (infra/k3d/cluster.yaml).
+  service:
+    type: NodePort
+    nodePort: 30090
   prometheusSpec:
     # By default Prometheus only watches monitoring configs made by this chart.
     # These let it pick up the ones our own services will add, in any namespace.
@@ -87,6 +91,10 @@ alertmanager:
         memory: 128Mi
 
 grafana:
+  # Reached at http://localhost:3000 through a fixed k3d port (infra/k3d/cluster.yaml).
+  service:
+    type: NodePort
+    nodePort: 30300
   # No adminPassword here on purpose: the Grafana chart generates a random one
   # and stores it in a Kubernetes Secret.
   defaultDashboardsTimezone: browser

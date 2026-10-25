@@ -7,6 +7,11 @@ image:
 
 port: 8003
 
+# The page is at http://localhost:18003 through a fixed k3d port (infra/k3d/cluster.yaml).
+service:
+  type: NodePort
+  nodePort: 30803
+
 # Read-only access to the sentinel namespace (infra/charts/agent-access).
 serviceAccountName: agent
 

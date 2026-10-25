@@ -9,6 +9,17 @@ metadata:
   name: sentinel
 servers: 1      # one node is enough on a 16 GB laptop; it runs both Kubernetes and our apps
 agents: 0
+# Fixed ports on the Mac for the web pages, so no port-forward is needed (and nothing breaks
+# when a pod restarts). Bound to 127.0.0.1 only: not reachable from other machines.
+# Each maps to a NodePort set in the Helm values. k3d sets ports only when it creates the
+# cluster, so changing them means down.sh + up.sh.
+ports:
+  - port: 127.0.0.1:3000:30300     # Grafana     (infra/helm-values/monitoring.yaml)
+    nodeFilters: [loadbalancer]
+  - port: 127.0.0.1:9090:30090     # Prometheus  (infra/helm-values/monitoring.yaml)
+    nodeFilters: [loadbalancer]
+  - port: 127.0.0.1:18003:30803    # agent page  (infra/helm-values/agent.yaml)
+    nodeFilters: [loadbalancer]
 # Pinned so the cluster matches your kubectl (v1.36) and doesn't change under you.
 image: rancher/k3s:v1.36.4-k3s1
 options:

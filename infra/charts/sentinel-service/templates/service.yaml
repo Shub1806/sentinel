@@ -5,9 +5,13 @@ metadata:
   labels:
     {{- include "svc.labels" . | nindent 4 }}
 spec:
+  type: {{ .Values.service.type }}
   selector:
     {{- include "svc.selectorLabels" . | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.port }}
       targetPort: http
+      {{- if and (eq .Values.service.type "NodePort") .Values.service.nodePort }}
+      nodePort: {{ .Values.service.nodePort }}
+      {{- end }}
