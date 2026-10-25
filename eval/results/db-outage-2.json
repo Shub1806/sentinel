@@ -1,0 +1,202 @@
+{
+  "scenario": "db-outage",
+  "run": 2,
+  "injected_at": "2026-10-25T21:53:19.693943+00:00",
+  "finished_at": "2026-10-25T22:01:05.852730+00:00",
+  "incident": {
+    "id": 14,
+    "grouped_into": null,
+    "title": "OrdersAvailabilityBudgetBurnFast",
+    "status": "firing",
+    "opened_at": "2026-10-25T21:59:35.641894Z",
+    "resolved_at": null,
+    "firing_alerts": 1,
+    "alerts": 1,
+    "notifications": 1,
+    "investigation": "running"
+  },
+  "detail": {
+    "id": 14,
+    "grouped_into": null,
+    "title": "OrdersAvailabilityBudgetBurnFast",
+    "status": "firing",
+    "opened_at": "2026-10-25T21:59:35.641894Z",
+    "resolved_at": null,
+    "firing_alerts": 1,
+    "alerts": [
+      {
+        "fingerprint": "e60a1fe994459dc9",
+        "name": "OrdersAvailabilityBudgetBurnFast",
+        "status": "firing",
+        "labels": {
+          "alertname": "OrdersAvailabilityBudgetBurnFast",
+          "namespace": "sentinel",
+          "prometheus": "monitoring/monitoring-kube-prometheus-prometheus",
+          "service": "orders",
+          "severity": "critical",
+          "slo": "availability"
+        },
+        "annotations": {
+          "description": "53.32% of POST /orders requests returned 5xx over the last 5 minutes (SLO allows 0.1%).",
+          "summary": "orders is burning its availability error budget fast"
+        },
+        "starts_at": "2026-10-25T21:59:25.580000Z",
+        "ends_at": null
+      }
+    ],
+    "notifications": 1,
+    "investigation": "done",
+    "investigations": [
+      {
+        "id": 13,
+        "model": "qwen3:4b",
+        "status": "done",
+        "started_at": "2026-10-25T21:59:35.646960Z",
+        "finished_at": "2026-10-25T22:00:51.701656Z",
+        "seconds": 76.1,
+        "tokens": 5369,
+        "error": "",
+        "steps": [
+          {
+            "tool": "k8s_pods",
+            "arguments": {},
+            "seconds": 0.81,
+            "auto": true,
+            "result": "{\"not_healthy_or_in_alert\":[],\"healthy_pods\":8}"
+          },
+          {
+            "tool": "k8s_events",
+            "arguments": {
+              "warnings_only": true
+            },
+            "seconds": 0.0,
+            "auto": true,
+            "result": "{\"events\":[{\"type\":\"Warning\",\"reason\":\"Unhealthy\",\"object\":\"Pod/orders-db-1\",\"message\":\"Readiness probe failed: HTTP probe failed with statuscode: 500\",\"count\":18,\"last_seen\":\"3m\"},{\"type\":\"Warning\",\"reason\":\"Unhealthy\",\"object\":\"Pod/localstack-66bc6b78b4-d22t7\",\"message\":\"Readiness probe failed: Get \\\"http://10.42.0.36:4566/_localstack/health\\\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)\",\"count\":1,\"last_seen\":\"38m\"},{\"type\":\"Warning\",\"reason\":\"Unhealthy\",\"object"
+          },
+          {
+            "tool": "loki_logs",
+            "arguments": {
+              "query": "{namespace=\"sentinel\", app=\"orders\"} | json | level=~\"WARN|WARNING|ERROR\"",
+              "minutes": 15,
+              "limit": 10
+            },
+            "seconds": 0.02,
+            "auto": true,
+            "result": "{\"lines\":[{\"time\":\"21:59:35\",\"pod\":\"orders-5b97876c74-xwpgq\",\"line\":\"{\\\"@timestamp\\\":\\\"2026-10-25T21:59:35.291546085Z\\\",\\\"@version\\\":\\\"1\\\",\\\"message\\\":\\\"Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: org.springframework.transaction.CannotCreateTransactionException: Could not open JPA EntityManager for transaction] with root cause\\\",\\\"logger_name\\\":\\\"org.apache.catalina.core.ContainerBase.[Tomcat].[localhost].[\"},{\"time\":\"21:5"
+          },
+          {
+            "tool": "k8s_rollout_diff",
+            "arguments": {
+              "deployment": "orders"
+            },
+            "seconds": 0.08,
+            "auto": true,
+            "result": "{\"deployment\":\"orders\",\"newest\":{\"revision\":1,\"created\":\"3h ago\",\"replicas\":1,\"ready\":1},\"previous\":null,\"changes\":[],\"note\":\"only one revision exists\"}"
+          }
+        ],
+        "report": {
+          "summary": "Orders service is failing to connect to Postgres, causing 5xx errors in POST /orders requests",
+          "likely_cause": "Postgres cluster (orders-db) is in hibernation state, leading to connection timeouts",
+          "evidence": [
+            "orders-db-1 pod readiness probe failing with HTTP 500 (18 failures in last 3m)",
+            "HikariPool connection timeout errors in orders logs"
+          ],
+          "suggested_action": {
+            "kind": "manual",
+            "target": "",
+            "detail": "Check Postgres cluster status via k8s_get to confirm hibernation state and wake up the cluster if needed",
+            "replicas": null
+          },
+          "confidence": "medium"
+        },
+        "rule_verdict": {
+          "rule": "alert OrdersAvailabilityBudgetBurnFast",
+          "kind": "manual",
+          "target": "",
+          "cause": "POST /orders is failing: check orders and Postgres",
+          "strong": false
+        },
+        "raw_answer": ""
+      }
+    ]
+  },
+  "investigation": {
+    "id": 13,
+    "model": "qwen3:4b",
+    "status": "done",
+    "started_at": "2026-10-25T21:59:35.646960Z",
+    "finished_at": "2026-10-25T22:00:51.701656Z",
+    "seconds": 76.1,
+    "tokens": 5369,
+    "error": "",
+    "steps": [
+      {
+        "tool": "k8s_pods",
+        "arguments": {},
+        "seconds": 0.81,
+        "auto": true,
+        "result": "{\"not_healthy_or_in_alert\":[],\"healthy_pods\":8}"
+      },
+      {
+        "tool": "k8s_events",
+        "arguments": {
+          "warnings_only": true
+        },
+        "seconds": 0.0,
+        "auto": true,
+        "result": "{\"events\":[{\"type\":\"Warning\",\"reason\":\"Unhealthy\",\"object\":\"Pod/orders-db-1\",\"message\":\"Readiness probe failed: HTTP probe failed with statuscode: 500\",\"count\":18,\"last_seen\":\"3m\"},{\"type\":\"Warning\",\"reason\":\"Unhealthy\",\"object\":\"Pod/localstack-66bc6b78b4-d22t7\",\"message\":\"Readiness probe failed: Get \\\"http://10.42.0.36:4566/_localstack/health\\\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)\",\"count\":1,\"last_seen\":\"38m\"},{\"type\":\"Warning\",\"reason\":\"Unhealthy\",\"object"
+      },
+      {
+        "tool": "loki_logs",
+        "arguments": {
+          "query": "{namespace=\"sentinel\", app=\"orders\"} | json | level=~\"WARN|WARNING|ERROR\"",
+          "minutes": 15,
+          "limit": 10
+        },
+        "seconds": 0.02,
+        "auto": true,
+        "result": "{\"lines\":[{\"time\":\"21:59:35\",\"pod\":\"orders-5b97876c74-xwpgq\",\"line\":\"{\\\"@timestamp\\\":\\\"2026-10-25T21:59:35.291546085Z\\\",\\\"@version\\\":\\\"1\\\",\\\"message\\\":\\\"Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception [Request processing failed: org.springframework.transaction.CannotCreateTransactionException: Could not open JPA EntityManager for transaction] with root cause\\\",\\\"logger_name\\\":\\\"org.apache.catalina.core.ContainerBase.[Tomcat].[localhost].[\"},{\"time\":\"21:5"
+      },
+      {
+        "tool": "k8s_rollout_diff",
+        "arguments": {
+          "deployment": "orders"
+        },
+        "seconds": 0.08,
+        "auto": true,
+        "result": "{\"deployment\":\"orders\",\"newest\":{\"revision\":1,\"created\":\"3h ago\",\"replicas\":1,\"ready\":1},\"previous\":null,\"changes\":[],\"note\":\"only one revision exists\"}"
+      }
+    ],
+    "report": {
+      "summary": "Orders service is failing to connect to Postgres, causing 5xx errors in POST /orders requests",
+      "likely_cause": "Postgres cluster (orders-db) is in hibernation state, leading to connection timeouts",
+      "evidence": [
+        "orders-db-1 pod readiness probe failing with HTTP 500 (18 failures in last 3m)",
+        "HikariPool connection timeout errors in orders logs"
+      ],
+      "suggested_action": {
+        "kind": "manual",
+        "target": "",
+        "detail": "Check Postgres cluster status via k8s_get to confirm hibernation state and wake up the cluster if needed",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert OrdersAvailabilityBudgetBurnFast",
+      "kind": "manual",
+      "target": "",
+      "cause": "POST /orders is failing: check orders and Postgres",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "timed_out": false,
+  "seconds_to_report": 452,
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "manual",
+  "baseline_cause_ok": true,
+  "baseline_action_ok": true,
+  "baseline_action": "manual"
+}

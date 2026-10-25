@@ -1,0 +1,201 @@
+{
+  "scenario": "slow-consumer",
+  "run": 2,
+  "injected_at": "2026-10-25T19:59:41.127154+00:00",
+  "finished_at": "2026-10-25T20:17:35.448149+00:00",
+  "incident": {
+    "id": 8,
+    "grouped_into": null,
+    "title": "ConsumerLagHigh",
+    "status": "firing",
+    "opened_at": "2026-10-25T20:16:38.590914Z",
+    "resolved_at": null,
+    "firing_alerts": 1,
+    "alerts": 1,
+    "notifications": 1,
+    "investigation": "running"
+  },
+  "detail": {
+    "id": 8,
+    "grouped_into": null,
+    "title": "ConsumerLagHigh",
+    "status": "firing",
+    "opened_at": "2026-10-25T20:16:38.590914Z",
+    "resolved_at": null,
+    "firing_alerts": 1,
+    "alerts": [
+      {
+        "fingerprint": "6e12cc80f15c06c3",
+        "name": "ConsumerLagHigh",
+        "status": "firing",
+        "labels": {
+          "alertname": "ConsumerLagHigh",
+          "namespace": "sentinel",
+          "prometheus": "monitoring/monitoring-kube-prometheus-prometheus",
+          "redpanda_group": "payments",
+          "severity": "warning"
+        },
+        "annotations": {
+          "description": "payments has 1443 unread messages and has been above 1000 for 5 minutes.",
+          "summary": "Consumer group payments is falling behind"
+        },
+        "starts_at": "2026-10-25T20:16:28.540000Z",
+        "ends_at": null
+      }
+    ],
+    "notifications": 1,
+    "investigation": "done",
+    "investigations": [
+      {
+        "id": 8,
+        "model": "qwen3:4b",
+        "status": "done",
+        "started_at": "2026-10-25T20:16:38.600486Z",
+        "finished_at": "2026-10-25T20:17:29.333341Z",
+        "seconds": 50.7,
+        "tokens": 4136,
+        "error": "",
+        "steps": [
+          {
+            "tool": "k8s_pods",
+            "arguments": {},
+            "seconds": 0.08,
+            "auto": true,
+            "result": "{\"not_healthy_or_in_alert\":[],\"healthy_pods\":9}"
+          },
+          {
+            "tool": "k8s_events",
+            "arguments": {
+              "warnings_only": true
+            },
+            "seconds": 0.01,
+            "auto": true,
+            "result": "{\"events\":[{\"type\":\"Warning\",\"reason\":\"FailedGetResourceMetric\",\"object\":\"HorizontalPodAutoscaler/payments\",\"message\":\"failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)\",\"count\":5,\"last_seen\":\"16m\"},{\"type\":\"Warning\",\"reason\":\"FailedComputeMetricsReplicas\",\"object\":\"HorizontalPodAutoscaler/payments\",\"message\":\"invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive"
+          },
+          {
+            "tool": "loki_logs",
+            "arguments": {
+              "query": "{namespace=\"sentinel\", app=\"payments\"} | json | level=~\"WARN|WARNING|ERROR\"",
+              "minutes": 15,
+              "limit": 10
+            },
+            "seconds": 0.03,
+            "auto": true,
+            "result": "{\"lines\":[],\"count\":0}"
+          },
+          {
+            "tool": "k8s_rollout_diff",
+            "arguments": {
+              "deployment": "payments"
+            },
+            "seconds": 0.03,
+            "auto": true,
+            "result": "{\"deployment\":\"payments\",\"newest\":{\"revision\":4,\"created\":\"37m ago\",\"replicas\":1,\"ready\":1},\"previous\":{\"revision\":3,\"created\":\"2h ago\",\"replicas\":0,\"ready\":0},\"changes\":[\"payments: env PROCESSING_DELAY_MS added = 2000\"],\"new_pods_healthy\":true}"
+          }
+        ],
+        "report": {
+          "summary": "The payments consumer group is lagging due to a new processing delay in the latest rollout, affecting the payments service.",
+          "likely_cause": "New environment variable PROCESSING_DELAY_MS=2000 added in the payments deployment rollout",
+          "evidence": [
+            "k8s_rollout_diff shows payments: env PROCESSING_DELAY_MS added = 2000",
+            "HPA warnings indicate failed CPU metric collection due to unready pods"
+          ],
+          "suggested_action": {
+            "kind": "rollout_undo",
+            "target": "payments",
+            "detail": "Revert the deployment rollout that added PROCESSING_DELAY_MS=2000 to restore normal processing speed",
+            "replicas": null
+          },
+          "confidence": "medium"
+        },
+        "rule_verdict": {
+          "rule": "alert ConsumerLagHigh",
+          "kind": "manual",
+          "target": "",
+          "cause": "a consumer is slower than the events arriving",
+          "strong": false
+        },
+        "raw_answer": ""
+      }
+    ]
+  },
+  "investigation": {
+    "id": 8,
+    "model": "qwen3:4b",
+    "status": "done",
+    "started_at": "2026-10-25T20:16:38.600486Z",
+    "finished_at": "2026-10-25T20:17:29.333341Z",
+    "seconds": 50.7,
+    "tokens": 4136,
+    "error": "",
+    "steps": [
+      {
+        "tool": "k8s_pods",
+        "arguments": {},
+        "seconds": 0.08,
+        "auto": true,
+        "result": "{\"not_healthy_or_in_alert\":[],\"healthy_pods\":9}"
+      },
+      {
+        "tool": "k8s_events",
+        "arguments": {
+          "warnings_only": true
+        },
+        "seconds": 0.01,
+        "auto": true,
+        "result": "{\"events\":[{\"type\":\"Warning\",\"reason\":\"FailedGetResourceMetric\",\"object\":\"HorizontalPodAutoscaler/payments\",\"message\":\"failed to get cpu utilization: did not receive metrics for targeted pods (pods might be unready)\",\"count\":5,\"last_seen\":\"16m\"},{\"type\":\"Warning\",\"reason\":\"FailedComputeMetricsReplicas\",\"object\":\"HorizontalPodAutoscaler/payments\",\"message\":\"invalid metrics (1 invalid out of 1), first error is: failed to get cpu resource metric value: failed to get cpu utilization: did not receive"
+      },
+      {
+        "tool": "loki_logs",
+        "arguments": {
+          "query": "{namespace=\"sentinel\", app=\"payments\"} | json | level=~\"WARN|WARNING|ERROR\"",
+          "minutes": 15,
+          "limit": 10
+        },
+        "seconds": 0.03,
+        "auto": true,
+        "result": "{\"lines\":[],\"count\":0}"
+      },
+      {
+        "tool": "k8s_rollout_diff",
+        "arguments": {
+          "deployment": "payments"
+        },
+        "seconds": 0.03,
+        "auto": true,
+        "result": "{\"deployment\":\"payments\",\"newest\":{\"revision\":4,\"created\":\"37m ago\",\"replicas\":1,\"ready\":1},\"previous\":{\"revision\":3,\"created\":\"2h ago\",\"replicas\":0,\"ready\":0},\"changes\":[\"payments: env PROCESSING_DELAY_MS added = 2000\"],\"new_pods_healthy\":true}"
+      }
+    ],
+    "report": {
+      "summary": "The payments consumer group is lagging due to a new processing delay in the latest rollout, affecting the payments service.",
+      "likely_cause": "New environment variable PROCESSING_DELAY_MS=2000 added in the payments deployment rollout",
+      "evidence": [
+        "k8s_rollout_diff shows payments: env PROCESSING_DELAY_MS added = 2000",
+        "HPA warnings indicate failed CPU metric collection due to unready pods"
+      ],
+      "suggested_action": {
+        "kind": "rollout_undo",
+        "target": "payments",
+        "detail": "Revert the deployment rollout that added PROCESSING_DELAY_MS=2000 to restore normal processing speed",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert ConsumerLagHigh",
+      "kind": "manual",
+      "target": "",
+      "cause": "a consumer is slower than the events arriving",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "timed_out": false,
+  "seconds_to_report": 1068,
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "rollout_undo payments",
+  "baseline_cause_ok": true,
+  "baseline_action_ok": true,
+  "baseline_action": "manual"
+}

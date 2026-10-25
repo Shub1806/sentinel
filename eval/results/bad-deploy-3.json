@@ -1,0 +1,259 @@
+{
+  "scenario": "bad-deploy",
+  "run": 3,
+  "injected_at": "2026-10-25T07:49:37.689137+00:00",
+  "finished_at": "2026-10-25T07:51:52.935191+00:00",
+  "incident": {
+    "id": 3,
+    "grouped_into": null,
+    "title": "PodRestarted",
+    "status": "firing",
+    "opened_at": "2026-10-25T07:50:52.691676Z",
+    "resolved_at": null,
+    "firing_alerts": 1,
+    "alerts": 1,
+    "notifications": 1,
+    "investigation": "queued"
+  },
+  "detail": {
+    "id": 3,
+    "grouped_into": null,
+    "title": "PodRestarted",
+    "status": "firing",
+    "opened_at": "2026-10-25T07:50:52.691676Z",
+    "resolved_at": null,
+    "firing_alerts": 1,
+    "alerts": [
+      {
+        "fingerprint": "539a972f65bd8ef1",
+        "name": "PodRestarted",
+        "status": "firing",
+        "labels": {
+          "alertname": "PodRestarted",
+          "namespace": "sentinel",
+          "pod": "payments-7df6cc498c-mt4r7",
+          "prometheus": "monitoring/monitoring-kube-prometheus-prometheus",
+          "severity": "warning"
+        },
+        "annotations": {
+          "description": "payments-7df6cc498c-mt4r7 restarted in the last 10 minutes. Check its last termination reason (for example OOMKilled).",
+          "summary": "Pod payments-7df6cc498c-mt4r7 restarted"
+        },
+        "starts_at": "2026-10-25T07:50:22.673000Z",
+        "ends_at": null
+      },
+      {
+        "fingerprint": "ed0a086ea0e00631",
+        "name": "PodRestarted",
+        "status": "resolved",
+        "labels": {
+          "alertname": "PodRestarted",
+          "namespace": "sentinel",
+          "pod": "payments-7df6cc498c-ldbhj",
+          "prometheus": "monitoring/monitoring-kube-prometheus-prometheus",
+          "severity": "warning"
+        },
+        "annotations": {
+          "description": "payments-7df6cc498c-ldbhj restarted in the last 10 minutes. Check its last termination reason (for example OOMKilled).",
+          "summary": "Pod payments-7df6cc498c-ldbhj restarted"
+        },
+        "starts_at": "2026-10-25T07:38:22.673000Z",
+        "ends_at": "2026-10-25T07:49:22.673000Z"
+      },
+      {
+        "fingerprint": "0811518e92b23091",
+        "name": "PodRestarted",
+        "status": "resolved",
+        "labels": {
+          "alertname": "PodRestarted",
+          "namespace": "sentinel",
+          "pod": "payments-7df6cc498c-nkb74",
+          "prometheus": "monitoring/monitoring-kube-prometheus-prometheus",
+          "severity": "warning"
+        },
+        "annotations": {
+          "description": "payments-7df6cc498c-nkb74 restarted in the last 10 minutes. Check its last termination reason (for example OOMKilled).",
+          "summary": "Pod payments-7df6cc498c-nkb74 restarted"
+        },
+        "starts_at": "2026-10-25T07:26:52.673000Z",
+        "ends_at": "2026-10-25T07:36:52.673000Z"
+      }
+    ],
+    "notifications": 2,
+    "investigation": "done",
+    "investigations": [
+      {
+        "id": 3,
+        "model": "qwen3:4b",
+        "status": "done",
+        "started_at": "2026-10-25T07:51:22.953993Z",
+        "finished_at": "2026-10-25T07:51:51.043541Z",
+        "seconds": 28.1,
+        "tokens": 4324,
+        "error": "",
+        "steps": [
+          {
+            "tool": "k8s_pods",
+            "arguments": {},
+            "seconds": 0.01,
+            "auto": true,
+            "result": "{\"not_healthy_or_in_alert\":[{\"name\":\"payments-7df6cc498c-mt4r7\",\"phase\":\"Running\",\"ready\":\"0/1\",\"restarts\":4,\"age\":\"105s\",\"owner\":\"ReplicaSet\",\"waiting\":\"CrashLoopBackOff\",\"last_exit\":{\"reason\":\"Error\",\"exit_code\":3,\"ago\":\"22s\"}}],\"healthy_pods\":8}"
+          },
+          {
+            "tool": "k8s_events",
+            "arguments": {
+              "warnings_only": true
+            },
+            "seconds": 0.01,
+            "auto": true,
+            "result": "{\"events\":[{\"type\":\"Warning\",\"reason\":\"BackOff\",\"object\":\"Pod/payments-7df6cc498c-mt4r7\",\"message\":\"Back-off restarting failed container payments in pod payments-7df6cc498c-mt4r7_sentinel(5b3053c0-fd91-4057-a9d6-a76449413f79)\",\"count\":11,\"last_seen\":\"14s\"},{\"type\":\"Warning\",\"reason\":\"BackOff\",\"object\":\"Pod/payments-7df6cc498c-ldbhj\",\"message\":\"Back-off restarting failed container payments in pod payments-7df6cc498c-ldbhj_sentinel(a3ec697b-fdf2-4ba7-ac2d-209e77c1c8ab)\",\"count\":10,\"last_seen\":\"12m"
+          },
+          {
+            "tool": "k8s_pod_logs",
+            "arguments": {
+              "pod": "payments-7df6cc498c-mt4r7",
+              "previous": true,
+              "tail": 30
+            },
+            "seconds": 0.0,
+            "auto": true,
+            "result": "{\"pod\":\"payments-7df6cc498c-mt4r7\",\"previous\":true,\"lines\":[\"INFO:     Started server process [1]\",\"INFO:     Waiting for application startup.\",\"{\\\"ts\\\": \\\"2026-10-25T07:51:00.082561+00:00\\\", \\\"level\\\": \\\"ERROR\\\", \\\"logger\\\": \\\"uvicorn.error\\\", \\\"msg\\\": \\\"Traceback (most recent call last):\\\\n  File \\\\\\\"/app/app/config.py\\\\\\\", line 27, in _int_setting\\\\n    value = int(raw)\\\\nValueError: invalid literal for int() with base 10: 'abc'\\\\n\\\\nThe above exception was the direct cause of the following e"
+          },
+          {
+            "tool": "loki_logs",
+            "arguments": {
+              "query": "{namespace=\"sentinel\", app=\"payments\"} | json | level=~\"WARN|WARNING|ERROR\"",
+              "minutes": 15,
+              "limit": 10
+            },
+            "seconds": 0.03,
+            "auto": true,
+            "result": "{\"lines\":[{\"time\":\"07:51:00\",\"pod\":\"payments-7df6cc498c-mt4r7\",\"line\":\"{\\\"ts\\\": \\\"2026-10-25T07:51:00.082829+00:00\\\", \\\"level\\\": \\\"ERROR\\\", \\\"logger\\\": \\\"uvicorn.error\\\", \\\"msg\\\": \\\"Application startup failed. Exiting.\\\"}\\n\"},{\"time\":\"07:51:00\",\"pod\":\"payments-7df6cc498c-mt4r7\",\"line\":\"{\\\"ts\\\": \\\"2026-10-25T07:51:00.082561+00:00\\\", \\\"level\\\": \\\"ERROR\\\", \\\"logger\\\": \\\"uvicorn.error\\\", \\\"msg\\\": \\\"Traceback (most recent call last):\\\\n  File \\\\\\\"/app/app/config.py\\\\\\\", line 27, in _int_setting\\\\n   "
+          },
+          {
+            "tool": "k8s_rollout_diff",
+            "arguments": {
+              "deployment": "payments"
+            },
+            "seconds": 0.37,
+            "auto": true,
+            "result": "{\"deployment\":\"payments\",\"newest\":{\"revision\":6,\"created\":\"25m ago\",\"replicas\":1,\"ready\":0},\"previous\":{\"revision\":5,\"created\":\"36m ago\",\"replicas\":1,\"ready\":1},\"changes\":[\"payments: env MAX_AMOUNT_CENTS added = abc\"],\"new_pods_healthy\":false}"
+          }
+        ],
+        "report": {
+          "summary": "Payments service pods are crashing due to invalid configuration value in the latest deployment rollout",
+          "likely_cause": "Environment variable MAX_AMOUNT_CENTS set to invalid string 'abc' in latest rollout",
+          "evidence": [
+            "payments pod logs show ValueError: invalid literal for int() with base 10: 'abc'",
+            "Rollout diff shows new deployment added env MAX_AMOUNT_CENTS=abc"
+          ],
+          "suggested_action": {
+            "kind": "rollout_undo",
+            "target": "payments",
+            "detail": "Revert to previous deployment revision (5) where MAX_AMOUNT_CENTS was valid before adding invalid string value",
+            "replicas": null
+          },
+          "confidence": "high"
+        },
+        "rule_verdict": {
+          "rule": "bad rollout",
+          "kind": "rollout_undo",
+          "target": "payments",
+          "cause": "the latest rollout of payments changed: payments: env MAX_AMOUNT_CENTS added = abc; its new pods are not ready (0/1) while revision 5 was (1/1)",
+          "strong": true
+        },
+        "raw_answer": ""
+      }
+    ]
+  },
+  "investigation": {
+    "id": 3,
+    "model": "qwen3:4b",
+    "status": "done",
+    "started_at": "2026-10-25T07:51:22.953993Z",
+    "finished_at": "2026-10-25T07:51:51.043541Z",
+    "seconds": 28.1,
+    "tokens": 4324,
+    "error": "",
+    "steps": [
+      {
+        "tool": "k8s_pods",
+        "arguments": {},
+        "seconds": 0.01,
+        "auto": true,
+        "result": "{\"not_healthy_or_in_alert\":[{\"name\":\"payments-7df6cc498c-mt4r7\",\"phase\":\"Running\",\"ready\":\"0/1\",\"restarts\":4,\"age\":\"105s\",\"owner\":\"ReplicaSet\",\"waiting\":\"CrashLoopBackOff\",\"last_exit\":{\"reason\":\"Error\",\"exit_code\":3,\"ago\":\"22s\"}}],\"healthy_pods\":8}"
+      },
+      {
+        "tool": "k8s_events",
+        "arguments": {
+          "warnings_only": true
+        },
+        "seconds": 0.01,
+        "auto": true,
+        "result": "{\"events\":[{\"type\":\"Warning\",\"reason\":\"BackOff\",\"object\":\"Pod/payments-7df6cc498c-mt4r7\",\"message\":\"Back-off restarting failed container payments in pod payments-7df6cc498c-mt4r7_sentinel(5b3053c0-fd91-4057-a9d6-a76449413f79)\",\"count\":11,\"last_seen\":\"14s\"},{\"type\":\"Warning\",\"reason\":\"BackOff\",\"object\":\"Pod/payments-7df6cc498c-ldbhj\",\"message\":\"Back-off restarting failed container payments in pod payments-7df6cc498c-ldbhj_sentinel(a3ec697b-fdf2-4ba7-ac2d-209e77c1c8ab)\",\"count\":10,\"last_seen\":\"12m"
+      },
+      {
+        "tool": "k8s_pod_logs",
+        "arguments": {
+          "pod": "payments-7df6cc498c-mt4r7",
+          "previous": true,
+          "tail": 30
+        },
+        "seconds": 0.0,
+        "auto": true,
+        "result": "{\"pod\":\"payments-7df6cc498c-mt4r7\",\"previous\":true,\"lines\":[\"INFO:     Started server process [1]\",\"INFO:     Waiting for application startup.\",\"{\\\"ts\\\": \\\"2026-10-25T07:51:00.082561+00:00\\\", \\\"level\\\": \\\"ERROR\\\", \\\"logger\\\": \\\"uvicorn.error\\\", \\\"msg\\\": \\\"Traceback (most recent call last):\\\\n  File \\\\\\\"/app/app/config.py\\\\\\\", line 27, in _int_setting\\\\n    value = int(raw)\\\\nValueError: invalid literal for int() with base 10: 'abc'\\\\n\\\\nThe above exception was the direct cause of the following e"
+      },
+      {
+        "tool": "loki_logs",
+        "arguments": {
+          "query": "{namespace=\"sentinel\", app=\"payments\"} | json | level=~\"WARN|WARNING|ERROR\"",
+          "minutes": 15,
+          "limit": 10
+        },
+        "seconds": 0.03,
+        "auto": true,
+        "result": "{\"lines\":[{\"time\":\"07:51:00\",\"pod\":\"payments-7df6cc498c-mt4r7\",\"line\":\"{\\\"ts\\\": \\\"2026-10-25T07:51:00.082829+00:00\\\", \\\"level\\\": \\\"ERROR\\\", \\\"logger\\\": \\\"uvicorn.error\\\", \\\"msg\\\": \\\"Application startup failed. Exiting.\\\"}\\n\"},{\"time\":\"07:51:00\",\"pod\":\"payments-7df6cc498c-mt4r7\",\"line\":\"{\\\"ts\\\": \\\"2026-10-25T07:51:00.082561+00:00\\\", \\\"level\\\": \\\"ERROR\\\", \\\"logger\\\": \\\"uvicorn.error\\\", \\\"msg\\\": \\\"Traceback (most recent call last):\\\\n  File \\\\\\\"/app/app/config.py\\\\\\\", line 27, in _int_setting\\\\n   "
+      },
+      {
+        "tool": "k8s_rollout_diff",
+        "arguments": {
+          "deployment": "payments"
+        },
+        "seconds": 0.37,
+        "auto": true,
+        "result": "{\"deployment\":\"payments\",\"newest\":{\"revision\":6,\"created\":\"25m ago\",\"replicas\":1,\"ready\":0},\"previous\":{\"revision\":5,\"created\":\"36m ago\",\"replicas\":1,\"ready\":1},\"changes\":[\"payments: env MAX_AMOUNT_CENTS added = abc\"],\"new_pods_healthy\":false}"
+      }
+    ],
+    "report": {
+      "summary": "Payments service pods are crashing due to invalid configuration value in the latest deployment rollout",
+      "likely_cause": "Environment variable MAX_AMOUNT_CENTS set to invalid string 'abc' in latest rollout",
+      "evidence": [
+        "payments pod logs show ValueError: invalid literal for int() with base 10: 'abc'",
+        "Rollout diff shows new deployment added env MAX_AMOUNT_CENTS=abc"
+      ],
+      "suggested_action": {
+        "kind": "rollout_undo",
+        "target": "payments",
+        "detail": "Revert to previous deployment revision (5) where MAX_AMOUNT_CENTS was valid before adding invalid string value",
+        "replicas": null
+      },
+      "confidence": "high"
+    },
+    "rule_verdict": {
+      "rule": "bad rollout",
+      "kind": "rollout_undo",
+      "target": "payments",
+      "cause": "the latest rollout of payments changed: payments: env MAX_AMOUNT_CENTS added = abc; its new pods are not ready (0/1) while revision 5 was (1/1)",
+      "strong": true
+    },
+    "raw_answer": ""
+  },
+  "timed_out": false,
+  "seconds_to_report": 133,
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "rollout_undo payments",
+  "baseline_cause_ok": true,
+  "baseline_action_ok": true,
+  "baseline_action": "rollout_undo payments"
+}
