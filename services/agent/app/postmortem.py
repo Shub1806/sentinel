@@ -197,6 +197,10 @@ def render(incident: Incident, pm: Postmortem, related=()) -> str:
     if inv:
         r = inv.report
         out += [f"{r.likely_cause or r.summary} (confidence: {r.confidence}, {inv.model})", ""]
+        v = inv.rule_verdict
+        if v:
+            target = f" {v['target']}" if v["target"] else ""
+            out += [f"Fixed rules ({v['rule']}): {v['kind']}{target}, because {v['cause']}.", ""]
         if r.evidence:
             out += ["Evidence:", ""] + [f"- {e}" for e in r.evidence] + [""]
     else:

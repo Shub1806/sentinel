@@ -6,6 +6,7 @@ import logging
 import time
 from datetime import UTC, datetime
 
+from app import rules
 from app.incidents import Incident
 from app.llm import ChatModel, ModelError
 from app.prompts import JSON_ONLY, OUT_OF_STEPS, SYSTEM_PROMPT
@@ -88,6 +89,7 @@ class Investigator:
             findings = await self.triage.collect(incident)
             for f in findings:
                 inv.steps.append(Step(f.tool, f.arguments, f.result, f.seconds, auto=True))
+            inv.rule_verdict = rules.evaluate(incident, inv.steps)
             self.on_change(inv)
             first += "\n\n" + findings_text(findings)
         messages = [

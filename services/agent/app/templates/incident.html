@@ -44,6 +44,12 @@
   <div class="action">
     <div>suggested action: <span class="kind">{{ a.kind }}</span>{% if a.target %} <code>{{ a.target }}</code>{% endif %}{% if a.kind == "scale_deployment" and a.replicas is not none %} to <strong>{{ a.replicas }}</strong> pods{% endif %}</div>
     {% if a.detail %}<div class="small" style="margin-top:4px">{{ a.detail }}</div>{% endif %}
+    {% set v = shown.rule_verdict %}
+    {% if v %}
+    <div class="small {{ 'warn' if disagrees(v, a.kind, a.target) else 'muted' }}" style="margin-top:8px">
+      {% if disagrees(v, a.kind, a.target) %}<strong>The fixed rules disagree:</strong> {% else %}fixed rules ({{ v.rule }}): {% endif %}{{ v.kind }}{% if v.target %} <code>{{ v.target }}</code>{% endif %}, because {{ v.cause }}.
+    </div>
+    {% endif %}
     {% if decision %}
       <div style="margin-top:10px"><span class="tag {{ decision.status }}">{{ decision.status }}</span>
         <span class="small">{{ "approved" if decision.status != "rejected" else "rejected" }} {{ decision.decided_at|utc }} by {{ decision.decided_by }}</span></div>

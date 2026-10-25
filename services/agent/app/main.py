@@ -72,6 +72,7 @@ def _investigation(inv: Investigation) -> dict:
             for s in inv.steps
         ],
         "report": inv.report.model_dump() if inv.report else None,
+        "rule_verdict": inv.rule_verdict,
         # Shown only when the model's answer could not be read as a report.
         "raw_answer": "" if inv.report else inv.raw_answer[:2000],
     }

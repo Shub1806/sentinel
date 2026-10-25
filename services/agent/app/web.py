@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.actions import EXECUTABLE, ActionError, why_not
 from app.metrics import ACTIONS
+from app.rules import disagrees
 
 log = logging.getLogger("agent.actions")
 router = APIRouter()
@@ -39,6 +40,7 @@ def _duration(start: datetime | None, end: datetime | None) -> str:
 
 templates.env.filters["utc"] = _time
 templates.env.globals["duration"] = _duration
+templates.env.globals["disagrees"] = disagrees
 
 
 def _busy(incidents) -> bool:

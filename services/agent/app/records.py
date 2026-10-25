@@ -28,6 +28,8 @@ class Investigation:
     raw_answer: str = ""
     error: str = ""
     tokens: int = 0
+    # What the fixed rules (app/rules.py) concluded from the same initial findings.
+    rule_verdict: dict | None = None
 
 
 @dataclass

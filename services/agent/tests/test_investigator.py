@@ -197,3 +197,14 @@ def test_initial_findings_come_first_and_are_marked_automatic():
     first_message = model.calls[0][0][1]["content"]
     assert "Initial findings (collected automatically" in first_message
     assert "WARN skipping invalid order.created message" in first_message
+
+
+def test_the_fixed_rule_verdict_is_stored_with_the_investigation():
+    used = []
+    investigator = Investigator(make_tools(used), 6000, 8, 30, lambda: NOW)
+    inv = Investigation(id=1, incident_id=1, model="scripted")
+
+    asyncio.run(investigator.run(incident(), ScriptedModel(Reply(REPORT, [])), inv))
+
+    assert inv.rule_verdict["rule"] == "alert InvalidMessagesReceived"
+    assert inv.rule_verdict["kind"] == "none"
