@@ -1,0 +1,177 @@
+# Every push and pull request: unit tests of all services, the agent and the evaluation tooling,
+# alert-rule tests, Helm and Terraform checks.
+# Pushes to main (and manual runs): the whole system on a throwaway k3d cluster, built with the same
+# scripts/up.sh as on a laptop, then the end-to-end smoke test.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  K3D_VERSION: v5.8.3
+  TERRAFORM_VERSION: 1.16.0
+  PROMETHEUS_IMAGE: prom/prometheus:v3.15.0
+
+jobs:
+  orders:
+    name: orders (Java)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/orders
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      # Includes the Testcontainers tests (real Postgres and Kafka in Docker).
+      - run: ./mvnw -B -q test
+
+  payments:
+    name: payments (Python)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/payments
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: services/payments/requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      - run: ruff format --check . && ruff check .
+      - run: pytest -q
+
+  notifications:
+    name: notifications (TypeScript)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: services/notifications
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: services/notifications/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  agent:
+    name: agent and evaluation tooling (Python)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: services/agent/requirements*.txt
+      - run: pip install -r services/agent/requirements-dev.txt
+      - name: Agent lint and tests
+        working-directory: services/agent
+        run: |
+          ruff format --check .
+          ruff check .
+          pytest -q
+      - name: Evaluation harness and replay lint and tests
+        run: |
+          ruff format --check scripts/eval --config services/agent/pyproject.toml
+          ruff check scripts/eval --config services/agent/pyproject.toml
+          python -m pytest -q scripts/eval -p no:cacheprovider
+
+  rules-and-infra:
+    name: alert rules, Helm, Terraform
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Alert rule tests (promtool)
+        run: |
+          docker run --rm -v "$PWD/infra/charts/sentinel-infra/rules:/rules" -w /rules \
+            --entrypoint promtool "$PROMETHEUS_IMAGE" test rules sentinel.rules.test.yaml
+      - name: Helm lint
+        run: |
+          for app in orders payments notifications agent; do
+            helm lint infra/charts/sentinel-service -f "infra/helm-values/$app.yaml"
+          done
+          helm lint infra/charts/sentinel-infra
+          helm lint infra/charts/agent-access
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      - name: Terraform format and validate
+        run: |
+          terraform fmt -check -recursive infra/terraform
+          for stack in cluster platform; do
+            terraform -chdir="infra/terraform/$stack" init -input=false -backend=false > /dev/null
+            terraform -chdir="infra/terraform/$stack" validate
+          done
+
+  end-to-end:
+    name: end-to-end on k3d
+    needs: [orders, payments, notifications, agent, rules-and-infra]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+    steps:
+      # LocalStack needs an account token. Without the repository secret this job only says so.
+      - name: Check for the LocalStack token
+        id: token
+        run: |
+          if [ -n "$LOCALSTACK_AUTH_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping end-to-end: add the LOCALSTACK_AUTH_TOKEN repository secret to run it."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.token.outputs.present == 'true'
+      - uses: hashicorp/setup-terraform@v3
+        if: steps.token.outputs.present == 'true'
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Install k3d
+        if: steps.token.outputs.present == 'true'
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="$K3D_VERSION" bash
+          k3d version
+      - name: Build and deploy everything (scripts/up.sh)
+        if: steps.token.outputs.present == 'true'
+        run: ./scripts/up.sh
+      - name: Smoke test (order -> Redpanda -> payments -> notifications -> S3)
+        if: steps.token.outputs.present == 'true'
+        run: ./scripts/smoke-test.sh
+      - name: Agent, Prometheus and alert routing respond
+        if: steps.token.outputs.present == 'true'
+        run: |
+          curl -sSf localhost:18003/healthz
+          curl -sSf localhost:9090/-/ready
+          curl -sSf localhost:9090/api/v1/targets \
+            | python3 -c 'import json, sys; t = json.load(sys.stdin)["data"]["activeTargets"]; up = sorted(x["labels"]["job"] for x in t if x["labels"].get("namespace") in ("sentinel", "agent") and x["health"] == "up"); print("targets up:", up)'
+      - name: What was running (on failure)
+        if: failure() && steps.token.outputs.present == 'true'
+        run: |
+          kubectl get pods -A -o wide
+          kubectl get events -A --sort-by=.lastTimestamp | tail -40
+          for d in orders payments notifications; do kubectl -n sentinel logs "deploy/$d" --tail=40 || true; done
+          kubectl -n agent logs deploy/agent --tail=40 || true
