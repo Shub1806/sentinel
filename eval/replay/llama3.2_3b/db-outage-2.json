@@ -1,0 +1,151 @@
+{
+  "scenario": "db-outage",
+  "run": 2,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 14.7,
+  "tokens": 16827,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_pods",
+      "arguments": {
+        "namespace": "sentinel"
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "last_seen": "3m",
+        "type": "Warning",
+        "reason": "Unhealthy",
+        "object": "Pod/orders-db-1",
+        "message": "Readiness probe failed: HTTP probe failed with statuscode: 500",
+        "count": 18
+      }
+    },
+    {
+      "tool": "k8s_pods",
+      "arguments": {
+        "namespace": "sentinel"
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "count": 1,
+        "last_seen": "38m",
+        "message": "Readiness probe failed: Get \"http://10.42.0.36:4566/_localstack/health\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+        "object": "Pod/localstack-66bc6b78b4-d22t7",
+        "reason": "Unhealthy",
+        "type": "Warning"
+      }
+    },
+    {
+      "tool": "k8s_rollout_diff",
+      "arguments": {
+        "deployment": "orders"
+      }
+    },
+    {
+      "tool": "k8s_pods",
+      "arguments": {
+        "confidence": "high",
+        "summary": "Orders is burning its availability error budget fast. Orders service is not healthy due to readiness probe failure. Latest rollout of orders did not introduce any changes.",
+        "likely_cause": "Readiness probe failure in orders service",
+        "evidence": [
+          "k8s_pods",
+          "k8s_events",
+          "k8s_rollout_diff"
+        ],
+        "suggested_action": {
+          "detail": "Restart orders deployment to fix readiness probe issue.",
+          "kind": "restart_deployment",
+          "target": "orders"
+        }
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "count": 18,
+        "last_seen": "3m",
+        "message": "Readiness probe failed: HTTP probe failed with statuscode: 500",
+        "object": "Pod/orders-db-1",
+        "reason": "Unhealthy",
+        "type": "Warning"
+      }
+    },
+    {
+      "tool": "k8s_pods",
+      "arguments": {
+        "confidence": "high",
+        "evidence": [
+          "k8s_pods",
+          "k8s_events",
+          "k8s_rollout_diff"
+        ],
+        "likely_cause": "Readiness probe failure in orders service",
+        "suggested_action": {
+          "detail": "Restart orders deployment to fix readiness probe issue.",
+          "kind": "restart_deployment",
+          "target": "orders"
+        },
+        "summary": "Orders is burning its availability error budget fast. Orders service is not healthy due to readiness probe failure. Latest rollout of orders did not introduce any changes."
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "object_name": null,
+        "warnings_only": false
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "object_name": null,
+        "warnings_only": false
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "object_name": null,
+        "warnings_only": false
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Orders is burning its availability error budget fast. Orders service is not healthy due to readiness probe failure. Latest rollout of orders did not introduce any changes.",
+      "likely_cause": "Readiness probe failure in orders service",
+      "evidence": [
+        "k8s_pods",
+        "k8s_events",
+        "k8s_rollout_diff"
+      ],
+      "suggested_action": {
+        "kind": "restart_deployment",
+        "target": "orders",
+        "detail": "Restart orders deployment to fix readiness probe issue.",
+        "replicas": null
+      },
+      "confidence": "high"
+    },
+    "rule_verdict": {
+      "rule": "alert OrdersAvailabilityBudgetBurnFast",
+      "kind": "manual",
+      "target": "",
+      "cause": "POST /orders is failing: check orders and Postgres",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": false,
+  "agent_action": "restart_deployment orders"
+}

@@ -1,0 +1,40 @@
+{
+  "scenario": "poison",
+  "run": 2,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 160.0,
+  "tokens": 8799,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Orders service is sending invalid orders with negative amounts, causing payments and notifications to skip them",
+      "likely_cause": "Orders service sending orders with negative amounts (amount_cents < 1)",
+      "evidence": [
+        "Payments logs show skipping order.created messages with amount_cents=-5",
+        "Notifications skip payment.done messages with invalid fields"
+      ],
+      "suggested_action": {
+        "kind": "manual",
+        "target": "",
+        "detail": "Check orders service logs for validation errors and ensure amount_cents is positive",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert InvalidMessagesReceived",
+      "kind": "none",
+      "target": "",
+      "cause": "a producer sent events that fail validation",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": true,
+  "agent_action": "manual"
+}

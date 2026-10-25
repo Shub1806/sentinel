@@ -1,0 +1,39 @@
+{
+  "scenario": "db-outage",
+  "run": 1,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 9.7,
+  "tokens": 5097,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Orders is burning its availability error budget fast, affecting the orders service",
+      "likely_cause": "High error rate in the orders service",
+      "evidence": [
+        "56.94% of POST /orders requests returned 5xx over the last 5 minutes"
+      ],
+      "suggested_action": {
+        "kind": "restart_deployment",
+        "target": "orders",
+        "detail": "Restart the orders deployment to address the high error rate and prevent further budget burn",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert OrdersAvailabilityBudgetBurnFast",
+      "kind": "manual",
+      "target": "",
+      "cause": "POST /orders is failing: check orders and Postgres",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": false,
+  "agent_action": "restart_deployment orders"
+}

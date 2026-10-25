@@ -1,0 +1,55 @@
+| Scenario | live qwen3:4b: cause / action | replay llama3.2:3b: cause / action | replay qwen3:4b: cause / action |
+|---|---|---|---|
+| Bad deploy: payments crash-loops | 100% (3/3) / 100% (3/3) | 33% (1/3) / 0% (0/3) | 100% (3/3) / 100% (3/3) |
+| Database outage | 100% (3/3) / 100% (3/3) | 0% (0/3) / 0% (0/3) | 100% (3/3) / 100% (3/3) |
+| S3 outage | 100% (3/3) / 100% (3/3) | 100% (3/3) / 0% (0/3) | 100% (3/3) / 0% (0/3) |
+| Slow consumer: payments falls behind | 100% (3/3) / 100% (3/3) | 0% (0/3) / 0% (0/3) | 100% (3/3) / 100% (3/3) |
+| Poison messages | 0% (0/3) / 0% (0/3) | 67% (2/3) / 33% (1/3) | 0% (0/3) / 33% (1/3) |
+| Broker outage | 100% (3/3) / 100% (3/3) | 100% (3/3) / 0% (0/3) | 100% (3/3) / 100% (3/3) |
+| **All** | 83% (15/18) / 83% (15/18) | 50% (9/18) / 6% (1/18) | 83% (15/18) / 72% (13/18) |
+
+### replay llama3.2:3b: 18 runs, median 9.7 s, 70 tool calls by the model (38 not in the recording)
+
+| Run | Live cause | Replayed cause | Replayed action |
+|---|---|---|---|
+| bad-deploy-1 | New deployment rollout added invalid environment variable MAX_AMOUNT_CENTS=abc causing applicatio... ✓ | Failed container startup ✗ | restart_deployment payments ✗ |
+| bad-deploy-2 | Environment variable MAX_AMOUNT_CENTS set to 'abc' in latest payments rollout ✓ | high consumer lag in Redpanda ✗ | none ✗ |
+| bad-deploy-3 | Environment variable MAX_AMOUNT_CENTS set to invalid string 'abc' in latest rollout ✓ | The MAX_AMOUNT_CENTS environment variable is set to an invalid value, causing the application to ... ✓ | restart_deployment payments ✗ |
+| broker-outage-1 | Redpanda cluster not running or DNS resolution failure for 'redpanda' ✓ | Redpanda is not reachable due to a connection issue ✓ | restart_deployment payments ✗ |
+| broker-outage-2 | Redpanda service missing or misconfigured in the sentinel namespace ✓ | Redpanda broker is down or not connected ✓ | restart_deployment redpanda ✗ |
+| broker-outage-3 | Missing Kubernetes service for Redpanda cluster ✓ | Redpanda broker is down or not connected ✓ | restart_deployment redpanda ✗ |
+| db-outage-1 | Postgres cluster (orders-db) is in hibernation state and not responding ✓ | High error rate in the orders service ✗ | restart_deployment orders ✗ |
+| db-outage-2 | Postgres cluster (orders-db) is in hibernation state, leading to connection timeouts ✓ | Readiness probe failure in orders service ✗ | restart_deployment orders ✗ |
+| db-outage-3 | Postgres cluster 'orders-db' is hibernated (shut down on purpose) ✓ | payments service is failing 503 statuscode due to orders service high latency ✗ | restart_deployment orders ✗ |
+| poison-1 | Payments deployment's latest rollout removed the MAX_AMOUNT_CENTS environment variable, causing i... ✗ | Low: Redpanda consumer lag high, possibly causing invalid messages to be skipped ✓ | restart_deployment redpanda ✗ |
+| poison-2 | Removal of MAX_AMOUNT_CENTS environment variable in the latest payments rollout ✗ | notifications skipped invalid payment.done messages due to invalid input ✓ | none ✓ |
+| poison-3 | Removal of MAX_AMOUNT_CENTS environment variable in payments rollout ✗ | payments environment variable MAX_AMOUNT_CENTS removed ✗ | rollout_undo payments ✗ |
+| s3-outage-1 | LocalStack service is not running ✓ | S3 unreachable ✓ | none ✗ |
+| s3-outage-2 | LocalStack pod is not running correctly (connection refused) ✓ | LocalStack S3 not reachable ✓ | none ✗ |
+| s3-outage-3 | LocalStack pods are not healthy (liveness/readiness probes failing) ✓ | LocalStack S3 unavailable ✓ | none ✗ |
+| slow-consumer-1 | New environment variable PROCESSING_DELAY_MS=2000 in the payments deployment rollout caused readi... ✓ | High consumer lag in Redpanda ✗ | restart_deployment redpanda ✗ |
+| slow-consumer-2 | New environment variable PROCESSING_DELAY_MS=2000 added in the payments deployment rollout ✓ | Consumer lag high in Redpanda payments group ✗ | restart_deployment redpanda ✗ |
+| slow-consumer-3 | The latest rollout added the environment variable PROCESSING_DELAY_MS=2000 to the payments deploy... ✓ | Consumer lag high in Redpanda payments group ✗ | restart_deployment redpanda ✗ |
+
+### replay qwen3:4b: 18 runs, median 52.7 s, 0 tool calls by the model (0 not in the recording)
+
+| Run | Live cause | Replayed cause | Replayed action |
+|---|---|---|---|
+| bad-deploy-1 | New deployment rollout added invalid environment variable MAX_AMOUNT_CENTS=abc causing applicatio... ✓ | Environment variable MAX_AMOUNT_CENTS set to invalid string 'abc' in latest payments rollout ✓ | rollout_undo payments ✓ |
+| bad-deploy-2 | Environment variable MAX_AMOUNT_CENTS set to 'abc' in latest payments rollout ✓ | New deployment added invalid MAX_AMOUNT_CENTS environment variable (value 'abc') causing applicat... ✓ | rollout_undo payments ✓ |
+| bad-deploy-3 | Environment variable MAX_AMOUNT_CENTS set to invalid string 'abc' in latest rollout ✓ | Environment variable MAX_AMOUNT_CENTS set to non-numeric value 'abc' in the latest rollout ✓ | rollout_undo payments ✓ |
+| broker-outage-1 | Redpanda cluster not running or DNS resolution failure for 'redpanda' ✓ | Redpanda cluster not available (DNS resolution failure) ✓ | manual ✓ |
+| broker-outage-2 | Redpanda service missing or misconfigured in the sentinel namespace ✓ | Redpanda cluster is unreachable or down ✓ | manual ✓ |
+| broker-outage-3 | Missing Kubernetes service for Redpanda cluster ✓ | Redpanda cluster is not running or unreachable ✓ | manual ✓ |
+| db-outage-1 | Postgres cluster (orders-db) is in hibernation state and not responding ✓ | Postgres cluster in hibernation mode (cnpg.io/hibernation=on) ✓ | manual ✓ |
+| db-outage-2 | Postgres cluster (orders-db) is in hibernation state, leading to connection timeouts ✓ | Postgres cluster 'orders-db' is in hibernation mode (cnpg.io/hibernation=on) ✓ | manual ✓ |
+| db-outage-3 | Postgres cluster 'orders-db' is hibernated (shut down on purpose) ✓ | Postgres cluster 'orders-db' is in hibernation mode (cnpg.io/hibernation=on) leading to database ... ✓ | manual orders-db ✓ |
+| poison-1 | Payments deployment's latest rollout removed the MAX_AMOUNT_CENTS environment variable, causing i... ✗ | Payments deployment's latest rollout removed MAX_AMOUNT_CENTS environment variable (was 'abc') ✗ | rollout_undo payments ✗ |
+| poison-2 | Removal of MAX_AMOUNT_CENTS environment variable in the latest payments rollout ✗ | Orders service sending orders with negative amounts (amount_cents < 1) ✗ | manual ✓ |
+| poison-3 | Removal of MAX_AMOUNT_CENTS environment variable in payments rollout ✗ | Removal of MAX_AMOUNT_CENTS environment variable in payments deployment rollout ✗ | rollout_undo payments ✗ |
+| s3-outage-1 | LocalStack service is not running ✓ | LocalStack pod is not running or not accessible ✓ | restart_deployment localstack ✗ |
+| s3-outage-2 | LocalStack pod is not running correctly (connection refused) ✓ | LocalStack pod is not running correctly (connection refused) ✓ | restart_deployment localstack ✗ |
+| s3-outage-3 | LocalStack pods are not healthy (liveness/readiness probes failing) ✓ | LocalStack pod is unhealthy (liveness probe failing with connection refused) ✓ | restart_deployment localstack ✗ |
+| slow-consumer-1 | New environment variable PROCESSING_DELAY_MS=2000 in the payments deployment rollout caused readi... ✓ | New environment variable PROCESSING_DELAY_MS=2000 added in the latest rollout of payments deployment ✓ | rollout_undo payments ✓ |
+| slow-consumer-2 | New environment variable PROCESSING_DELAY_MS=2000 added in the payments deployment rollout ✓ | New environment variable PROCESSING_DELAY_MS=2000 in payments deployment rollout ✓ | rollout_undo payments ✓ |
+| slow-consumer-3 | The latest rollout added the environment variable PROCESSING_DELAY_MS=2000 to the payments deploy... ✓ | New environment variable PROCESSING_DELAY_MS=2000 added in payments deployment rollout ✓ | rollout_undo payments ✓ |

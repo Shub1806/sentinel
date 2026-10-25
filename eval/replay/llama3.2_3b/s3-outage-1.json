@@ -1,0 +1,56 @@
+{
+  "scenario": "s3-outage",
+  "run": 1,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 4.0,
+  "tokens": 3827,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "postgres-cluster",
+        "name": "orders-db"
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "postgres-cluster",
+        "name": "orders-db"
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Notifications failing to handle messages, S3 unreachable",
+      "likely_cause": "S3 unreachable",
+      "evidence": [
+        "S3 is LocalStack (Deployment \"localstack\")",
+        "notifications has been failing (and retrying) messages for 5 minutes"
+      ],
+      "suggested_action": {
+        "kind": "none",
+        "target": "",
+        "detail": "Check LocalStack deployment for any issues or restart it.",
+        "replicas": null
+      },
+      "confidence": "low"
+    },
+    "rule_verdict": {
+      "rule": "alert NotificationErrors",
+      "kind": "manual",
+      "target": "",
+      "cause": "notifications can't save receipts: check S3 (localstack)",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": false,
+  "agent_action": "none"
+}

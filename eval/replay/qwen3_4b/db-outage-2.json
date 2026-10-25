@@ -1,0 +1,40 @@
+{
+  "scenario": "db-outage",
+  "run": 2,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 35.4,
+  "tokens": 3800,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "The orders service is failing due to Postgres database unavailability, causing 53.32% of POST /orders requests to return 5xx errors",
+      "likely_cause": "Postgres cluster 'orders-db' is in hibernation mode (cnpg.io/hibernation=on)",
+      "evidence": [
+        "orders-db-1 pod readiness probe failed 18 times with HTTP 500",
+        "orders service logs show transaction exception: Could not open JPA EntityManager for transaction"
+      ],
+      "suggested_action": {
+        "kind": "manual",
+        "target": "",
+        "detail": "Wake up Postgres cluster 'orders-db' by removing the hibernation annotation (cnpg.io/hibernation=off) to restore database availability",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert OrdersAvailabilityBudgetBurnFast",
+      "kind": "manual",
+      "target": "",
+      "cause": "POST /orders is failing: check orders and Postgres",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "manual"
+}

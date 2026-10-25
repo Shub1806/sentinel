@@ -1,0 +1,56 @@
+{
+  "scenario": "slow-consumer",
+  "run": 2,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 5.3,
+  "tokens": 3595,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Consumer group payments is falling behind",
+      "likely_cause": "Consumer lag high in Redpanda payments group",
+      "evidence": [
+        "1443 unread messages in payments Consumer group",
+        "Consumer lag: redpanda_kafka_consumer_group_lag_sum{redpanda_group='payments'} = 1443"
+      ],
+      "suggested_action": {
+        "kind": "restart_deployment",
+        "target": "redpanda",
+        "detail": "Restart Redpanda to clear backlog and ensure timely message processing.",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert ConsumerLagHigh",
+      "kind": "manual",
+      "target": "",
+      "cause": "a consumer is slower than the events arriving",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": false,
+  "agent_action": "restart_deployment redpanda"
+}

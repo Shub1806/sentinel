@@ -1,0 +1,40 @@
+{
+  "scenario": "poison",
+  "run": 1,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 37.8,
+  "tokens": 4228,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Payments service is skipping invalid messages due to missing MAX_AMOUNT_CENTS configuration, affecting notifications and payments",
+      "likely_cause": "Payments deployment's latest rollout removed MAX_AMOUNT_CENTS environment variable (was 'abc')",
+      "evidence": [
+        "payments deployment rollout removed MAX_AMOUNT_CENTS (was 'abc')",
+        "notifications skipped 2.01 invalid payment.done messages with 'event_id: Invalid input: expected string, received undefined' errors"
+      ],
+      "suggested_action": {
+        "kind": "rollout_undo",
+        "target": "payments",
+        "detail": "Revert payments deployment to previous revision (v6) to restore MAX_AMOUNT_CENTS environment variable",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert InvalidMessagesReceived",
+      "kind": "none",
+      "target": "",
+      "cause": "a producer sent events that fail validation",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": false,
+  "agent_action": "rollout_undo payments"
+}

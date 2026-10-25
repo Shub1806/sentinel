@@ -1,0 +1,56 @@
+{
+  "scenario": "poison",
+  "run": 2,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 5.6,
+  "tokens": 4710,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "postgres-cluster",
+        "name": "orders-db"
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "postgres-cluster",
+        "name": "orders-db"
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "InvalidMessagesReceived: notifications skipped invalid messages, payments skipped invalid messages",
+      "likely_cause": "notifications skipped invalid payment.done messages due to invalid input",
+      "evidence": [
+        "Invalid input: expected string, received undefined",
+        "Input should be greater than or equal to 1"
+      ],
+      "suggested_action": {
+        "kind": "none",
+        "target": "",
+        "detail": "No action needed, investigate why payments and notifications are receiving invalid input.",
+        "replicas": null
+      },
+      "confidence": "low"
+    },
+    "rule_verdict": {
+      "rule": "alert InvalidMessagesReceived",
+      "kind": "none",
+      "target": "",
+      "cause": "a producer sent events that fail validation",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "none"
+}

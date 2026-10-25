@@ -1,0 +1,40 @@
+{
+  "scenario": "db-outage",
+  "run": 1,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 47.9,
+  "tokens": 4307,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "The orders service is failing to save orders due to Postgres cluster being in hibernation, causing high 5xx errors",
+      "likely_cause": "Postgres cluster in hibernation mode (cnpg.io/hibernation=on)",
+      "evidence": [
+        "Postgres pod (orders-db-1) has 18 readiness probe failures with HTTP 500 in last 3 minutes",
+        "Postgres cluster annotation cnpg.io/hibernation=on indicates intentional shutdown"
+      ],
+      "suggested_action": {
+        "kind": "manual",
+        "target": "",
+        "detail": "Wake up Postgres cluster by removing hibernation annotation or triggering restart via CloudNativePG",
+        "replicas": null
+      },
+      "confidence": "high"
+    },
+    "rule_verdict": {
+      "rule": "alert OrdersAvailabilityBudgetBurnFast",
+      "kind": "manual",
+      "target": "",
+      "cause": "POST /orders is failing: check orders and Postgres",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "manual"
+}

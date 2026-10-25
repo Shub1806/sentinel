@@ -1,0 +1,110 @@
+{
+  "scenario": "db-outage",
+  "run": 3,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 8.5,
+  "tokens": 12356,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_pods",
+      "arguments": {
+        "namespace": "sentinel"
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "object": "Pod/orders-db-1",
+        "message": "Readiness probe failed: HTTP probe failed with statuscode: 500",
+        "count": 18,
+        "last_seen": "3m",
+        "type": "Warning",
+        "reason": "Unhealthy"
+      }
+    },
+    {
+      "tool": "k8s_pods",
+      "arguments": {
+        "namespace": "sentinel"
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "count": 1,
+        "last_seen": "5m",
+        "message": "Readiness probe failed: HTTP probe failed with statuscode: 503",
+        "object": "Pod/payments-dd74755d-6p8k9",
+        "reason": "Unhealthy",
+        "type": "Warning"
+      }
+    },
+    {
+      "tool": "loki_logs",
+      "arguments": {
+        "query": "{namespace=\"sentinel\", app=\"orders\"} | json | level=~\"WARN|WARNING|ERROR\""
+      }
+    },
+    {
+      "tool": "k8s_rollout_diff",
+      "arguments": {
+        "deployment": "orders"
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "object_name": null,
+        "warnings_only": false
+      }
+    },
+    {
+      "tool": "k8s_events",
+      "arguments": {
+        "object_name": null,
+        "warnings_only": false
+      }
+    },
+    {
+      "tool": "loki_logs",
+      "arguments": {
+        "query": "{namespace=\"sentinel\", app=\"orders\"} | json | level=~\"WARN|WARNING|ERROR\"",
+        "minutes": 15,
+        "limit": 30
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "orders is burning its availability error budget fast, affecting payments and notifications services",
+      "likely_cause": "payments service is failing 503 statuscode due to orders service high latency",
+      "evidence": [
+        "53.06% of POST /orders requests returned 5xx over the last 5 minutes",
+        "Readiness probe failed: HTTP probe failed with statuscode: 503 in Pod/payments-dd74755d-6p8k9"
+      ],
+      "suggested_action": {
+        "kind": "restart_deployment",
+        "target": "orders",
+        "detail": "Restart orders deployment to resolve high latency issue",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert OrdersAvailabilityBudgetBurnFast",
+      "kind": "manual",
+      "target": "",
+      "cause": "POST /orders is failing: check orders and Postgres",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": false,
+  "agent_action": "restart_deployment orders"
+}

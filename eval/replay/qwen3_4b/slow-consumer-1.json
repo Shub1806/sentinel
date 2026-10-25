@@ -1,0 +1,40 @@
+{
+  "scenario": "slow-consumer",
+  "run": 1,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 50.3,
+  "tokens": 4258,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "The payments consumer group is lagging due to a new processing delay in the payments deployment, causing slow message processing and insufficient scaling.",
+      "likely_cause": "New environment variable PROCESSING_DELAY_MS=2000 added in the latest rollout of payments deployment",
+      "evidence": [
+        "Rollout diff shows payments: env PROCESSING_DELAY_MS added = 2000",
+        "HPA for payments reports failed to get CPU metrics (pods might be unready)"
+      ],
+      "suggested_action": {
+        "kind": "rollout_undo",
+        "target": "payments",
+        "detail": "Revert the environment variable PROCESSING_DELAY_MS to its previous value to reduce processing latency and allow HPA to scale properly",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert ConsumerLagHigh",
+      "kind": "manual",
+      "target": "",
+      "cause": "a consumer is slower than the events arriving",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "rollout_undo payments"
+}

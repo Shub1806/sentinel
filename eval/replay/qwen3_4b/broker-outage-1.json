@@ -1,0 +1,40 @@
+{
+  "scenario": "broker-outage",
+  "run": 1,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 126.9,
+  "tokens": 7822,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Orders outbox backlog due to failure to send events to Redpanda, affecting payments and notifications services",
+      "likely_cause": "Redpanda cluster not available (DNS resolution failure)",
+      "evidence": [
+        "orders logs show connection error to redpanda:9092",
+        "payments pods report 'Name or service not known' for redpanda:9092"
+      ],
+      "suggested_action": {
+        "kind": "manual",
+        "target": "",
+        "detail": "Verify Redpanda cluster status and DNS resolution in namespace sentinel",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert OutboxBacklog",
+      "kind": "manual",
+      "target": "",
+      "cause": "orders can't publish its events: check the broker (redpanda)",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "manual"
+}

@@ -1,0 +1,40 @@
+{
+  "scenario": "broker-outage",
+  "run": 3,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 104.4,
+  "tokens": 7007,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "The orders outbox backlog is caused by the orders service failing to connect to Redpanda, preventing event delivery. This affects downstream services (payments and notifications).",
+      "likely_cause": "Redpanda cluster is not running or unreachable",
+      "evidence": [
+        "Orders logs show disconnection from redpanda:9092",
+        "Payments pods have readiness probe failures"
+      ],
+      "suggested_action": {
+        "kind": "manual",
+        "target": "",
+        "detail": "Check Redpanda cluster status using k8s_get and verify Redpanda pod health",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "alert OutboxBacklog",
+      "kind": "manual",
+      "target": "",
+      "cause": "orders can't publish its events: check the broker (redpanda)",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "manual"
+}

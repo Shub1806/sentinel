@@ -1,0 +1,40 @@
+{
+  "scenario": "bad-deploy",
+  "run": 2,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 26.6,
+  "tokens": 3907,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Payments pods are crashing due to invalid MAX_AMOUNT_CENTS configuration value (abc) from the latest rollout.",
+      "likely_cause": "New deployment added invalid MAX_AMOUNT_CENTS environment variable (value 'abc') causing application startup failure",
+      "evidence": [
+        "payments-7df6cc498c-ldbhj crashed with ValueError: invalid literal for int() with base 10: 'abc'",
+        "Latest rollout (revision 4) added env MAX_AMOUNT_CENTS = abc"
+      ],
+      "suggested_action": {
+        "kind": "rollout_undo",
+        "target": "payments",
+        "detail": "Roll back to previous deployment revision (3) to restore valid MAX_AMOUNT_CENTS configuration",
+        "replicas": null
+      },
+      "confidence": "high"
+    },
+    "rule_verdict": {
+      "rule": "bad rollout",
+      "kind": "rollout_undo",
+      "target": "payments",
+      "cause": "the latest rollout of payments changed: payments: env MAX_AMOUNT_CENTS added = abc; its new pods are not ready (0/1) while revision 3 was (1/1)",
+      "strong": true
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "rollout_undo payments"
+}

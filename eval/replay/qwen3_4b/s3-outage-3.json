@@ -1,0 +1,40 @@
+{
+  "scenario": "s3-outage",
+  "run": 3,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 43.7,
+  "tokens": 4159,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Notifications service fails to save receipts to S3 (LocalStack) due to unresponsive LocalStack pod",
+      "likely_cause": "LocalStack pod is unhealthy (liveness probe failing with connection refused)",
+      "evidence": [
+        "LocalStack pod (localstack-66bc6b78b4-lnvrt) has liveness probe failing with connection refused",
+        "Notifications logs show 16 failed retries to connect to S3 (LocalStack) at 10.43.93.37:4566"
+      ],
+      "suggested_action": {
+        "kind": "restart_deployment",
+        "target": "localstack",
+        "detail": "Restart LocalStack deployment to fix S3 emulator unresponsiveness",
+        "replicas": 0
+      },
+      "confidence": "high"
+    },
+    "rule_verdict": {
+      "rule": "alert NotificationErrors",
+      "kind": "manual",
+      "target": "",
+      "cause": "notifications can't save receipts: check S3 (localstack)",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": false,
+  "agent_action": "restart_deployment localstack"
+}

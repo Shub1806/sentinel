@@ -1,0 +1,55 @@
+{
+  "scenario": "bad-deploy",
+  "run": 1,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 10.1,
+  "tokens": 4508,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Pod payments-7df6cc498c-nkb74 restarted, likely due to failed container startup",
+      "likely_cause": "Failed container startup",
+      "evidence": [
+        "Error: invalid literal for int() with base 10: 'abc' in payments container logs"
+      ],
+      "suggested_action": {
+        "kind": "restart_deployment",
+        "target": "payments",
+        "detail": "Restart the payments deployment to recover from the failed container startup.",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "bad rollout",
+      "kind": "rollout_undo",
+      "target": "payments",
+      "cause": "the latest rollout of payments changed: payments: env MAX_AMOUNT_CENTS added = abc; its new pods are not ready (0/1) while revision 1 was (1/1)",
+      "strong": true
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": false,
+  "agent_action": "restart_deployment payments"
+}

@@ -1,0 +1,41 @@
+{
+  "scenario": "bad-deploy",
+  "run": 1,
+  "model": "qwen3:4b",
+  "live_model": "qwen3:4b",
+  "seconds": 20.7,
+  "tokens": 3199,
+  "model_tool_calls": [],
+  "unrecorded_calls": [],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Payments pod is failing to start due to invalid configuration value in latest rollout, affecting order processing.",
+      "likely_cause": "Environment variable MAX_AMOUNT_CENTS set to invalid string 'abc' in latest payments rollout",
+      "evidence": [
+        "payments pod restarted 3 times with exit code 3",
+        "config.py fails to convert 'abc' to integer during startup",
+        "rollout added invalid MAX_AMOUNT_CENTS=abc"
+      ],
+      "suggested_action": {
+        "kind": "rollout_undo",
+        "target": "payments",
+        "detail": "Revert payments deployment to previous healthy revision (v1) to fix invalid MAX_AMOUNT_CENTS configuration",
+        "replicas": null
+      },
+      "confidence": "high"
+    },
+    "rule_verdict": {
+      "rule": "bad rollout",
+      "kind": "rollout_undo",
+      "target": "payments",
+      "cause": "the latest rollout of payments changed: payments: env MAX_AMOUNT_CENTS added = abc; its new pods are not ready (0/1) while revision 1 was (1/1)",
+      "strong": true
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": true,
+  "agent_action": "rollout_undo payments"
+}

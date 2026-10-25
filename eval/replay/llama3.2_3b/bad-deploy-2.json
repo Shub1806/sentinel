@@ -1,0 +1,55 @@
+{
+  "scenario": "bad-deploy",
+  "run": 2,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 5.9,
+  "tokens": 4841,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "Redpanda consumer lag high, affecting payments and notifications",
+      "likely_cause": "high consumer lag in Redpanda",
+      "evidence": [
+        "redpanda_kafka_consumer_group_lag_sum{redpanda_group=\"payments\"|\"notifications\"}: 1000"
+      ],
+      "suggested_action": {
+        "kind": "none",
+        "target": "",
+        "detail": "Monitor Redpanda consumer lag and consider scaling or upgrading Redpanda to improve performance.",
+        "replicas": null
+      },
+      "confidence": "medium"
+    },
+    "rule_verdict": {
+      "rule": "bad rollout",
+      "kind": "rollout_undo",
+      "target": "payments",
+      "cause": "the latest rollout of payments changed: payments: env MAX_AMOUNT_CENTS added = abc; its new pods are not ready (0/1) while revision 3 was (1/1)",
+      "strong": true
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": false,
+  "agent_action_ok": false,
+  "agent_action": "none"
+}

@@ -1,0 +1,55 @@
+{
+  "scenario": "poison",
+  "run": 1,
+  "model": "llama3.2:3b",
+  "live_model": "qwen3:4b",
+  "seconds": 6.3,
+  "tokens": 4716,
+  "model_tool_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "unrecorded_calls": [
+    {
+      "tool": "k8s_get",
+      "arguments": {
+        "kind": "statefulset",
+        "name": "redpanda"
+      }
+    }
+  ],
+  "investigation": {
+    "status": "done",
+    "error": "",
+    "report": {
+      "summary": "InvalidMessagesReceived affecting notifications and payments services",
+      "likely_cause": "Low: Redpanda consumer lag high, possibly causing invalid messages to be skipped",
+      "evidence": [
+        "Redpanda consumer lag: redpanda_kafka_consumer_group_lag_sum{redpanda_group=\"payments\"|\"notifications\"}=1000"
+      ],
+      "suggested_action": {
+        "kind": "restart_deployment",
+        "target": "redpanda",
+        "detail": "Restarting Redpanda may help resolve the issue by clearing the consumer lag and allowing it to re-sync with the Kafka topic.",
+        "replicas": null
+      },
+      "confidence": "low"
+    },
+    "rule_verdict": {
+      "rule": "alert InvalidMessagesReceived",
+      "kind": "none",
+      "target": "",
+      "cause": "a producer sent events that fail validation",
+      "strong": false
+    },
+    "raw_answer": ""
+  },
+  "agent_cause_ok": true,
+  "agent_action_ok": false,
+  "agent_action": "restart_deployment redpanda"
+}
