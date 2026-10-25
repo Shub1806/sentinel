@@ -18,6 +18,11 @@ INCIDENTS_OPENED = Counter(
     "Incidents opened.",
 )
 
+INCIDENTS_GROUPED = Counter(
+    "agent_incidents_grouped",  # exported as agent_incidents_grouped_total
+    "Incidents grouped into an earlier one about the same service (not investigated on their own).",
+)
+
 OPEN_INCIDENTS = Gauge("agent_open_incidents", "Incidents that are still firing.")
 
 INVESTIGATIONS = Counter(

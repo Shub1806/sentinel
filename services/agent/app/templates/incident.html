@@ -3,10 +3,13 @@
 {% block content %}
 <p class="small"><a href="/">← incidents</a></p>
 <h1>#{{ incident.id }} {{ incident.title }} <span class="tag {{ incident.status }}">{{ incident.status }}</span></h1>
+{% if parent %}
+<div class="panel" style="margin:10px 0">Grouped into <a href="/ui/incidents/{{ parent.id }}">#{{ parent.id }} {{ parent.title }}</a>: it is about the same service ({{ shared|join(", ") }}) and fired soon after. The investigation, actions and post-mortem are there.</div>
+{% endif %}
 <p class="muted small">opened {{ incident.opened_at|utc }}{% if incident.resolved_at %} · resolved {{ incident.resolved_at|utc }}{% endif %} · lasted {{ duration(incident.opened_at, incident.resolved_at) }} · {{ incident.notifications }} notification(s)</p>
 
 {% set pm = incident.postmortem %}
-{% if pm or incident.status == "resolved" %}
+{% if not parent and (pm or group_resolved) %}
 <h2>Post-mortem</h2>
 {% if pm and pm.status == "done" %}
 <p class="small"><a href="/incidents/{{ incident.id }}/postmortem.md">download as Markdown</a>{% if pm.error %} · <span class="muted">{{ pm.error }}</span>{% endif %}</p>
@@ -14,7 +17,7 @@
 {% elif pm %}
 <p><span class="tag {{ 'running' if pm.status in ('queued', 'writing') else pm.status }}">{{ pm.status }}</span> {{ pm.error }}</p>
 {% endif %}
-{% if incident.status == "resolved" and not (pm and pm.status in ("queued", "writing")) %}
+{% if group_resolved and not (pm and pm.status in ("queued", "writing")) %}
 <form class="inline" method="post" action="/ui/incidents/{{ incident.id }}/postmortem" style="margin-top:8px">
   <button type="submit" class="secondary">{{ "write again" if pm else "write post-mortem" }}</button>
 </form>
@@ -82,6 +85,18 @@
 {% endfor %}
 </ol>
 <p class="muted small">auto = collected by fixed rules before the model's first turn · model = chosen by the model</p>
+{% endif %}
+
+{% if related %}
+<h2>Related incidents ({{ related|length }})</h2>
+<p class="muted small">Alerts about the same service that fired while this was open. Not investigated separately.</p>
+<table>
+  <tr><th>#</th><th>incident</th><th>status</th><th class="hide-narrow">opened</th></tr>
+  {% for r in related %}
+  <tr><td><a href="/ui/incidents/{{ r.id }}">{{ r.id }}</a></td><td><a href="/ui/incidents/{{ r.id }}">{{ r.title }}</a></td>
+      <td><span class="tag {{ r.status }}">{{ r.status }}</span></td><td class="hide-narrow small">{{ r.opened_at|utc }}</td></tr>
+  {% endfor %}
+</table>
 {% endif %}
 
 <h2>Alerts</h2>

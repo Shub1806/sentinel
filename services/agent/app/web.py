@@ -65,14 +65,16 @@ def _latest_report(incident):
 
 @router.get("/", response_class=HTMLResponse)
 async def incident_list(request: Request):
-    incidents = request.app.state.store.all()
+    store = request.app.state.store
+    incidents = store.top_level()
     return templates.TemplateResponse(
         request,
         "incidents.html",
         {
             "incidents": incidents,
+            "related": {i.id: store.related(i) for i in incidents},
             "latest": {i.id: _latest_report(i) for i in incidents},
-            "refresh": _busy(incidents),
+            "refresh": _busy(store.all()),
             "settings": request.app.state.settings,
         },
     )
@@ -80,9 +82,11 @@ async def incident_list(request: Request):
 
 @router.get("/ui/incidents/{incident_id}", response_class=HTMLResponse)
 async def incident_page(request: Request, incident_id: int):
-    incident = request.app.state.store.get(incident_id)
+    store = request.app.state.store
+    incident = store.get(incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="incident not found")
+    parent = store.get(incident.parent_id) if incident.parent_id else None
     shown = _latest_report(incident)
     blocked = None
     if shown and shown.report:
@@ -93,6 +97,10 @@ async def incident_page(request: Request, incident_id: int):
         "incident.html",
         {
             "incident": incident,
+            "related": store.related(incident),
+            "parent": parent,
+            "shared": sorted(incident.subjects & parent.subjects) if parent else [],
+            "group_resolved": store.group_resolved(incident),
             "shown": shown,
             "decision": _decision_for(incident, shown) if shown else None,
             "blocked": blocked,
@@ -195,8 +203,16 @@ async def postmortem_again(request: Request, incident_id: int):
     incident = request.app.state.store.get(incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="incident not found")
-    if incident.status != "resolved":
-        raise HTTPException(status_code=409, detail="the incident is still firing")
+    store = request.app.state.store
+    if incident.parent_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"grouped into #{incident.parent_id}; its post-mortem covers this one",
+        )
+    if not store.group_resolved(incident):
+        raise HTTPException(
+            status_code=409, detail="the incident (or a related one) is still firing"
+        )
     pm = incident.postmortem
     if pm and pm.status in ("queued", "writing"):
         raise HTTPException(status_code=409, detail="a post-mortem is already being written")

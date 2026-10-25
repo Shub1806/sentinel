@@ -10,6 +10,7 @@ import json
 import time
 from dataclasses import dataclass
 
+from app.grouping import deployment_of
 from app.incidents import Incident
 from app.tools.base import Tool, call_tool
 
@@ -28,9 +29,7 @@ class Finding:
 
 
 def _deployment_of(pod_name: str) -> str | None:
-    """payments-58f84654df-plx78 -> payments (Deployment pods: <name>-<rs hash>-<pod hash>)."""
-    parts = pod_name.rsplit("-", 2)
-    return parts[0] if len(parts) == 3 else None
+    return deployment_of(pod_name)
 
 
 def _unhealthy(pod: dict) -> bool:

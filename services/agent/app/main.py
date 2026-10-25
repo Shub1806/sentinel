@@ -18,7 +18,12 @@ from app.incidents import Incident, IncidentStore
 from app.investigator import Investigation, Investigator
 from app.llm import ChatModel
 from app.logging_setup import configure_logging
-from app.metrics import INCIDENTS_OPENED, NOTIFICATIONS_RECEIVED, OPEN_INCIDENTS
+from app.metrics import (
+    INCIDENTS_GROUPED,
+    INCIDENTS_OPENED,
+    NOTIFICATIONS_RECEIVED,
+    OPEN_INCIDENTS,
+)
 from app.runner import InvestigationRunner
 from app.storage import Database
 from app.tools.kubernetes import KubeApi
@@ -31,6 +36,7 @@ def _summary(incident: Incident) -> dict:
     latest = incident.investigations[-1] if incident.investigations else None
     return {
         "id": incident.id,
+        "grouped_into": incident.parent_id,
         "title": incident.title,
         "status": incident.status,
         "opened_at": incident.opened_at,
@@ -89,10 +95,13 @@ def build_runner(
 
 
 def handle_notification(app: FastAPI, notification: Notification, source: str) -> Incident:
-    incident, opened = app.state.store.record(notification)
+    store = app.state.store
+    incident, opened = store.record(notification)
     NOTIFICATIONS_RECEIVED.labels(status=notification.status).inc()
     if opened:
         INCIDENTS_OPENED.inc()
+        if incident.parent_id:
+            INCIDENTS_GROUPED.inc()
     OPEN_INCIDENTS.set(app.state.store.open_count())
     log.info(
         "incident opened" if opened else "incident updated",
@@ -102,14 +111,17 @@ def handle_notification(app: FastAPI, notification: Notification, source: str) -
             "incident_status": incident.status,
             "notification_status": notification.status,
             "alerts": [f"{a.name}:{a.status}" for a in notification.alerts],
+            "grouped_into": incident.parent_id,
             "source": source,
         },
     )
     model = app.state.settings.llm_model
-    if opened and incident.status == "firing" and model:
+    # Only the first incident of a group is investigated; the others point to it.
+    if opened and incident.status == "firing" and incident.parent_id is None and model:
         app.state.runner.start(incident, model)
-    if incident.status == "resolved" and incident.postmortem is None:
-        app.state.runner.start_postmortem(incident, model)
+    root = store.root(incident)
+    if store.group_resolved(root) and root.postmortem is None:
+        app.state.runner.start_postmortem(root, model)
     return incident
 
 

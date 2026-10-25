@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Incidents</h1>
-<p class="muted small">One incident per alert group (alert name + namespace). Newest first.</p>
+<p class="muted small">One incident per alert group (alert name + namespace). Alerts about the same service that fire soon after are grouped under the first one. Newest first.</p>
 {% if not incidents %}
 <div class="empty">No incidents. Alerts for namespace {{ settings.namespace }} will show up here.</div>
 {% else %}
@@ -12,7 +12,7 @@
   <tr class="row">
     <td><a href="/ui/incidents/{{ inc.id }}">{{ inc.id }}</a></td>
     <td><span class="tag {{ inc.status }}">{{ inc.status }}</span></td>
-    <td><a href="/ui/incidents/{{ inc.id }}">{{ inc.title }}</a><br><span class="muted small">{{ inc.firing_alerts }}/{{ inc.alerts|length }} alerts firing</span></td>
+    <td><a href="/ui/incidents/{{ inc.id }}">{{ inc.title }}</a><br><span class="muted small">{{ inc.firing_alerts }}/{{ inc.alerts|length }} alerts firing{% if related[inc.id] %} · +{{ related[inc.id]|length }} related ({{ related[inc.id]|map(attribute="title")|join(", ") }}){% endif %}</span></td>
     <td class="hide-narrow small">{{ inc.opened_at|utc }}</td>
     <td class="hide-narrow small">{{ duration(inc.opened_at, inc.resolved_at) }}</td>
     <td>{% if inv %}<span class="tag {{ inv.status }}">{{ inv.status }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>

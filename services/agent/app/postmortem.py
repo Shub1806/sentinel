@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from app.grouping import subjects
 from app.incidents import Incident
 from app.llm import ChatModel, ModelError
 from app.records import Postmortem
@@ -65,13 +66,23 @@ def _first_report(incident: Incident):
     return next((i for i in incident.investigations if i.report), None)
 
 
-def timeline(incident: Incident) -> list[tuple[datetime, str]]:
-    events: list[tuple[datetime, str]] = []
+def _alert_events(incident: Incident, note: str = "") -> list[tuple[datetime, str]]:
+    events = []
     for a in incident.alerts.values():
-        where = a.labels.get("pod") or a.labels.get("job") or a.labels.get("redpanda_group") or ""
-        events.append((a.starts_at, f"alert {a.name} fired{f' ({where})' if where else ''}"))
+        # The pod, or else the service it is about (never the exporter that made the metric).
+        where = a.labels.get("pod") or ", ".join(sorted(subjects(a.labels)))
+        where = ", ".join(x for x in (where, note) if x)
+        suffix = f" ({where})" if where else ""
+        events.append((a.starts_at, f"alert {a.name} fired{suffix}"))
         if a.ends_at:
-            events.append((a.ends_at, f"alert {a.name} cleared{f' ({where})' if where else ''}"))
+            events.append((a.ends_at, f"alert {a.name} cleared{suffix}"))
+    return events
+
+
+def timeline(incident: Incident, related=()) -> list[tuple[datetime, str]]:
+    events = _alert_events(incident)
+    for child in related:
+        events += _alert_events(child, f"related #{child.id}")
     events.append((incident.opened_at, "incident opened"))
     for inv in incident.investigations:
         if inv.started_at:
@@ -99,8 +110,10 @@ def timeline(incident: Incident) -> list[tuple[datetime, str]]:
     return sorted(events, key=lambda e: e[0])
 
 
-def durations(incident: Incident) -> dict[str, str | None]:
-    first_alert = min((a.starts_at for a in incident.alerts.values()), default=None)
+def durations(incident: Incident, related=()) -> dict[str, str | None]:
+    group = [incident, *related]
+    first_alert = min((a.starts_at for i in group for a in i.alerts.values()), default=None)
+    resolved = max(i.resolved_at for i in group) if all(i.resolved_at for i in group) else None
     reported = next((i.finished_at for i in incident.investigations if i.report), None)
     mitigated = next(
         (a.finished_at for a in incident.actions if a.status == "done" and a.finished_at), None
@@ -109,7 +122,7 @@ def durations(incident: Incident) -> dict[str, str | None]:
         "alert fired → incident opened": _span(first_alert, incident.opened_at),
         "incident opened → diagnosis": _span(incident.opened_at, reported),
         "incident opened → fix carried out": _span(incident.opened_at, mitigated),
-        "alert fired → resolved": _span(first_alert, incident.resolved_at),
+        "alert fired → resolved": _span(first_alert, resolved),
     }
 
 
@@ -144,12 +157,15 @@ def rollout_facts(incident: Incident) -> list[str]:
     return lines
 
 
-def facts_text(incident: Incident) -> str:
+def facts_text(incident: Incident, related=()) -> str:
     """The timeline, durations, rollout state and report, as plain text for the model."""
-    lines = [f"Incident #{incident.id}: {incident.title}", "Timeline (UTC):"]
-    lines += [f"- {_when(t)} {text}" for t, text in timeline(incident)]
+    lines = [f"Incident #{incident.id}: {incident.title}"]
+    if related:
+        lines.append("Related alerts grouped into it: " + ", ".join(r.title for r in related))
+    lines.append("Timeline (UTC):")
+    lines += [f"- {_when(t)} {text}" for t, text in timeline(incident, related)]
     lines += ["", "Durations:"]
-    lines += [f"- {name}: {value or 'n/a'}" for name, value in durations(incident).items()]
+    lines += [f"- {name}: {value or 'n/a'}" for name, value in durations(incident, related).items()]
     rollouts = rollout_facts(incident)
     if rollouts:
         lines += ["", "Rollout state seen during the investigation:"] + rollouts
@@ -161,7 +177,7 @@ def facts_text(incident: Incident) -> str:
     return "\n".join(lines)
 
 
-def render(incident: Incident, pm: Postmortem) -> str:
+def render(incident: Incident, pm: Postmortem, related=()) -> str:
     inv = _first_report(incident)
     out = [
         f"# Post-mortem: #{incident.id} {incident.title}",
@@ -185,6 +201,12 @@ def render(incident: Incident, pm: Postmortem) -> str:
             out += ["Evidence:", ""] + [f"- {e}" for e in r.evidence] + [""]
     else:
         out += ["No investigation report.", ""]
+    if related:
+        out += ["## Related alerts", ""]
+        out += [
+            f"- #{r.id} {r.title}: {r.status}, opened {_when(r.opened_at)} UTC" for r in related
+        ]
+        out += [""]
     out += ["## What was done", ""]
     if incident.actions:
         for act in incident.actions:
@@ -196,9 +218,9 @@ def render(incident: Incident, pm: Postmortem) -> str:
     else:
         out.append("- No action was carried out by the agent.")
     out += ["", "## Timeline (UTC)", ""]
-    out += [f"- {_when(t)} {text}" for t, text in timeline(incident)]
+    out += [f"- {_when(t)} {text}" for t, text in timeline(incident, related)]
     out += ["", "## Durations", ""]
-    out += [f"- {name}: {value or 'n/a'}" for name, value in durations(incident).items()]
+    out += [f"- {name}: {value or 'n/a'}" for name, value in durations(incident, related).items()]
     out += [
         "",
         "Times come from the alerts: the problem itself may have started before the first "
@@ -219,14 +241,16 @@ def _parse_narrative(text: str) -> Narrative | None:
         return None
 
 
-async def write(incident: Incident, pm: Postmortem, model: ChatModel | None, clock) -> Postmortem:
+async def write(
+    incident: Incident, pm: Postmortem, model: ChatModel | None, clock, related=()
+) -> Postmortem:
     pm.status = "writing"
     if model is not None:
         try:
             reply = await model.chat(
                 [
                     {"role": "system", "content": NARRATIVE_PROMPT},
-                    {"role": "user", "content": facts_text(incident)},
+                    {"role": "user", "content": facts_text(incident, related)},
                 ]
             )
             narrative = _parse_narrative(reply.content)
@@ -240,7 +264,7 @@ async def write(incident: Incident, pm: Postmortem, model: ChatModel | None, clo
         except ModelError as exc:
             pm.error = f"no narrative: {exc}"
     pm.generated_at = clock()
-    pm.markdown = render(incident, pm)
+    pm.markdown = render(incident, pm, related)
     pm.status = "done"
     log.info(
         "post-mortem written",

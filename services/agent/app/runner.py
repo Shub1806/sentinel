@@ -53,7 +53,13 @@ class InvestigationRunner:
     async def _write_postmortem(self, incident: Incident, model: str) -> None:
         async with self._one_at_a_time:
             chat = self.model_factory(model) if model else None
-            await postmortem.write(incident, incident.postmortem, chat, lambda: datetime.now(UTC))
+            await postmortem.write(
+                incident,
+                incident.postmortem,
+                chat,
+                lambda: datetime.now(UTC),
+                related=self.store.related(incident),
+            )
         self.store.save_postmortem(incident.postmortem)
 
     async def wait(self) -> None:

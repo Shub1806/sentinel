@@ -12,10 +12,11 @@ from Alertmanager on startup (app/catchup.py), and match the reloaded incidents.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import count
 
 from app.alerts import Alert, Notification
+from app.grouping import subjects
 from app.records import Action, Investigation, Postmortem
 
 
@@ -45,8 +46,17 @@ class Incident:
     investigations: list[Investigation] = field(default_factory=list)
     # Decisions on suggested actions, oldest first.
     actions: list[Action] = field(default_factory=list)
-    # Written when the incident resolves.
+    # Written when the incident (and every incident grouped into it) has resolved.
     postmortem: Postmortem | None = None
+    # Set when this incident was grouped into an earlier one about the same service.
+    parent_id: int | None = None
+
+    @property
+    def subjects(self) -> set[str]:
+        found: set[str] = set()
+        for alert in self.alerts.values():
+            found |= subjects(alert.labels)
+        return found
 
     @property
     def firing_alerts(self) -> int:
@@ -67,8 +77,12 @@ def _state(alert: Alert) -> AlertState:
 
 
 class IncidentStore:
-    def __init__(self, clock=lambda: datetime.now(UTC), db=None) -> None:
+    def __init__(
+        self, clock=lambda: datetime.now(UTC), db=None, group_window=timedelta(minutes=30)
+    ) -> None:
         self._clock = clock
+        # A new incident joins a firing one about the same service opened within this window.
+        self._group_window = group_window
         self._db = db
         self._incidents: dict[int, Incident] = {}
         self._open_by_group: dict[str, int] = {}
@@ -121,6 +135,9 @@ class IncidentStore:
             incident.alerts[alert.fingerprint] = _state(alert)
         incident.notifications += 1
         incident.updated_at = now
+        if opened:
+            parent = self._find_parent(incident, now)
+            incident.parent_id = parent.id if parent else None
 
         if incident.firing_alerts == 0:
             incident.status = "resolved"
@@ -129,6 +146,35 @@ class IncidentStore:
         if self._db:
             self._db.save_incident(incident)
         return incident, opened
+
+    def _find_parent(self, incident: Incident, now: datetime) -> Incident | None:
+        """The oldest firing top-level incident about the same service, opened recently."""
+        mine = incident.subjects
+        if not mine:
+            return None
+        for other in sorted(self._incidents.values(), key=lambda i: i.id):
+            if (
+                other.id != incident.id
+                and other.parent_id is None
+                and other.status == "firing"
+                and now - other.opened_at <= self._group_window
+                and other.subjects & mine
+            ):
+                return other
+        return None
+
+    def related(self, incident: Incident) -> list[Incident]:
+        """Incidents grouped into this one, oldest first."""
+        return sorted(
+            (i for i in self._incidents.values() if i.parent_id == incident.id),
+            key=lambda i: i.id,
+        )
+
+    def root(self, incident: Incident) -> Incident:
+        return self._incidents.get(incident.parent_id, incident) if incident.parent_id else incident
+
+    def group_resolved(self, root: Incident) -> bool:
+        return root.status == "resolved" and all(i.status == "resolved" for i in self.related(root))
 
     def new_investigation(self, incident: Incident, model: str) -> Investigation:
         inv = Investigation(id=next(self._investigation_ids), incident_id=incident.id, model=model)
@@ -170,6 +216,10 @@ class IncidentStore:
 
     def get(self, incident_id: int) -> Incident | None:
         return self._incidents.get(incident_id)
+
+    def top_level(self) -> list[Incident]:
+        """Incidents not grouped into another one, newest first."""
+        return [i for i in self.all() if i.parent_id is None]
 
     def all(self) -> list[Incident]:
         """Newest first."""
