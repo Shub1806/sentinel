@@ -2,25 +2,30 @@
 
 import asyncio
 from collections.abc import Callable
-from itertools import count
 
-from app.incidents import Incident
+from app.incidents import Incident, IncidentStore
 from app.investigator import Investigation, Investigator
 from app.llm import ChatModel
 from app.metrics import INVESTIGATION_SECONDS, INVESTIGATIONS, TOOL_CALLS
 
 
 class InvestigationRunner:
-    def __init__(self, investigator: Investigator, model_factory: Callable[[str], ChatModel]):
+    def __init__(
+        self,
+        investigator: Investigator,
+        model_factory: Callable[[str], ChatModel],
+        store: IncidentStore | None = None,
+    ):
         self.investigator = investigator
         self.model_factory = model_factory
-        self._ids = count(1)
+        # Where investigations are numbered and saved. Set by the app if not given here.
+        self.store = store or IncidentStore()
+        investigator.on_change = lambda inv: self.store.save_investigation(inv)
         self._one_at_a_time = asyncio.Semaphore(1)
         self._tasks: set[asyncio.Task] = set()
 
     def start(self, incident: Incident, model: str) -> Investigation:
-        inv = Investigation(id=next(self._ids), incident_id=incident.id, model=model)
-        incident.investigations.append(inv)
+        inv = self.store.new_investigation(incident, model)
         task = asyncio.create_task(self._run(incident, inv))
         self._tasks.add(task)  # keep a reference until it finishes
         task.add_done_callback(self._tasks.discard)

@@ -8,6 +8,7 @@ import httpx2
 from fastapi import FastAPI, HTTPException, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from app import web
 from app.alerts import Notification
 from app.catchup import firing_notifications
 from app.config import Settings, load_settings
@@ -17,6 +18,7 @@ from app.llm import ChatModel
 from app.logging_setup import configure_logging
 from app.metrics import INCIDENTS_OPENED, NOTIFICATIONS_RECEIVED, OPEN_INCIDENTS
 from app.runner import InvestigationRunner
+from app.storage import Database
 from app.tools.registry import build_tools
 
 log = logging.getLogger("agent")
@@ -66,7 +68,9 @@ def _investigation(inv: Investigation) -> dict:
     }
 
 
-def build_runner(settings: Settings, tool_client, llm_client) -> InvestigationRunner:
+def build_runner(
+    settings: Settings, tool_client, llm_client, store: IncidentStore
+) -> InvestigationRunner:
     investigator = Investigator(
         build_tools(settings, tool_client),
         settings.tool_max_chars,
@@ -77,6 +81,7 @@ def build_runner(settings: Settings, tool_client, llm_client) -> InvestigationRu
     return InvestigationRunner(
         investigator,
         lambda model: ChatModel(llm_client, settings.llm_base_url, model, settings.llm_api_key),
+        store,
     )
 
 
@@ -127,16 +132,29 @@ def create_app(
     async def lifespan(app: FastAPI):
         configure_logging()
         app.state.settings = settings or load_settings()
+        db = None
+        if store is None:
+            db = Database(app.state.settings.db_path) if app.state.settings.db_path else None
+        app.state.store = store or IncidentStore(db=db)
+        OPEN_INCIDENTS.set(app.state.store.open_count())
         clients = []
         if runner is None:
             s = app.state.settings
             tool_client = httpx2.AsyncClient(timeout=s.tool_timeout_seconds)
             llm_client = httpx2.AsyncClient(timeout=s.llm_timeout_seconds)
             clients = [tool_client, llm_client]
-            app.state.runner = build_runner(s, tool_client, llm_client)
+            app.state.runner = build_runner(s, tool_client, llm_client, app.state.store)
         else:
+            runner.store = app.state.store
             app.state.runner = runner
-        log.info("started", extra={"model": app.state.settings.llm_model or "(off)"})
+        log.info(
+            "started",
+            extra={
+                "model": app.state.settings.llm_model or "(off)",
+                "db": app.state.settings.db_path or "(memory only)",
+                "incidents_loaded": len(app.state.store.all()),
+            },
+        )
         if catch_up_client is not None:
             await catch_up(app, catch_up_client)
         elif clients:
@@ -145,9 +163,11 @@ def create_app(
         app.state.runner.cancel()
         for client in clients:
             await client.aclose()
+        if db:
+            db.close()
 
     app = FastAPI(title="agent", lifespan=lifespan)
-    app.state.store = store or IncidentStore()
+    app.include_router(web.router)
 
     @app.post("/alerts")
     async def receive_alerts(notification: Notification) -> dict:

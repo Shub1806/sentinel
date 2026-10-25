@@ -4,41 +4,17 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from app.incidents import Incident
 from app.llm import ChatModel, ModelError
 from app.prompts import JSON_ONLY, OUT_OF_STEPS, SYSTEM_PROMPT
-from app.report import Report, parse_report
+from app.records import Investigation, Step
+from app.report import parse_report
 from app.tools.base import Tool, call_tool
 from app.triage import Triage, findings_text
 
 log = logging.getLogger("agent.investigator")
-
-
-@dataclass
-class Step:
-    tool: str
-    arguments: dict
-    result: str
-    seconds: float
-    auto: bool = False  # collected by the initial findings, not chosen by the model
-
-
-@dataclass
-class Investigation:
-    id: int
-    incident_id: int
-    model: str
-    status: str = "queued"  # queued, running, done, failed
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    steps: list[Step] = field(default_factory=list)
-    report: Report | None = None
-    raw_answer: str = ""
-    error: str = ""
-    tokens: int = 0
 
 
 def describe_incident(incident: Incident, now: datetime) -> str:
@@ -64,8 +40,11 @@ class Investigator:
         clock=lambda: datetime.now(UTC),
         namespace: str = "sentinel",
         triage: bool = True,
+        on_change=lambda inv: None,
     ):
         self.tools = tools
+        # Called whenever the investigation changes, so it can be saved and shown while it runs.
+        self.on_change = on_change
         self.triage = Triage(tools, namespace, tool_max_chars) if triage else None
         self.tool_max_chars = tool_max_chars
         self.max_steps = max_steps
@@ -75,6 +54,7 @@ class Investigator:
     async def run(self, incident: Incident, model: ChatModel, inv: Investigation) -> Investigation:
         inv.status = "running"
         inv.started_at = self.clock()
+        self.on_change(inv)
         log.info(
             "investigation started",
             extra={"incident_id": incident.id, "investigation_id": inv.id, "model": model.model},
@@ -87,6 +67,7 @@ class Investigator:
         except ModelError as exc:
             inv.status, inv.error = "failed", str(exc)
         inv.finished_at = self.clock()
+        self.on_change(inv)
         log.info(
             "investigation finished",
             extra={
@@ -107,6 +88,7 @@ class Investigator:
             findings = await self.triage.collect(incident)
             for f in findings:
                 inv.steps.append(Step(f.tool, f.arguments, f.result, f.seconds, auto=True))
+            self.on_change(inv)
             first += "\n\n" + findings_text(findings)
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -157,6 +139,7 @@ class Investigator:
                 result = await call_tool(self.tools, call.name, call.arguments, self.tool_max_chars)
             seconds = round(time.monotonic() - started, 2)
             inv.steps.append(Step(call.name, call.arguments, result, seconds))
+            self.on_change(inv)
             log.info(
                 "investigation step",
                 extra={

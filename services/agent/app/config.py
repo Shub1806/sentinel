@@ -25,6 +25,8 @@ class Settings:
     tool_timeout_seconds: float = 10.0
     # Tool results are cut to this many characters, so one call can't flood the model's context.
     tool_max_chars: int = 6000
+    # SQLite file for incidents and investigations. Empty = memory only (lost on restart).
+    db_path: str = ""
     # Any chat model behind an OpenAI-compatible API (for example a local Ollama server).
     # Empty model = investigations are off; incidents are still recorded.
     llm_base_url: str = "http://host.k3d.internal:11434/v1"
@@ -58,6 +60,7 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         alertmanager_url=env.get("ALERTMANAGER_URL", defaults.alertmanager_url).rstrip("/"),
         tool_timeout_seconds=_positive(env, "TOOL_TIMEOUT_SECONDS", defaults.tool_timeout_seconds),
         tool_max_chars=_positive(env, "TOOL_MAX_CHARS", defaults.tool_max_chars, int),
+        db_path=env.get("DB_PATH", "").strip(),
         llm_base_url=(env.get("LLM_BASE_URL") or defaults.llm_base_url).rstrip("/"),
         llm_model=env.get("LLM_MODEL", "").strip(),
         llm_api_key=env.get("LLM_API_KEY", ""),

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Incidents</h1>
+<p class="muted small">One incident per alert group (alert name + namespace). Newest first.</p>
+{% if not incidents %}
+<div class="empty">No incidents. Alerts for namespace {{ settings.namespace }} will show up here.</div>
+{% else %}
+<table>
+  <tr><th>#</th><th>status</th><th>incident</th><th class="hide-narrow">opened</th><th class="hide-narrow">for</th><th>agent</th><th>likely cause</th></tr>
+  {% for inc in incidents %}
+  {% set inv = latest[inc.id] %}
+  <tr class="row">
+    <td><a href="/ui/incidents/{{ inc.id }}">{{ inc.id }}</a></td>
+    <td><span class="tag {{ inc.status }}">{{ inc.status }}</span></td>
+    <td><a href="/ui/incidents/{{ inc.id }}">{{ inc.title }}</a><br><span class="muted small">{{ inc.firing_alerts }}/{{ inc.alerts|length }} alerts firing</span></td>
+    <td class="hide-narrow small">{{ inc.opened_at|utc }}</td>
+    <td class="hide-narrow small">{{ duration(inc.opened_at, inc.resolved_at) }}</td>
+    <td>{% if inv %}<span class="tag {{ inv.status }}">{{ inv.status }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+    <td class="small">{% if inv and inv.report %}{{ inv.report.likely_cause|truncate(110) }}{% elif inv and inv.error %}<span class="muted">{{ inv.error|truncate(80) }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

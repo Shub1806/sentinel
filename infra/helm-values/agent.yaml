@@ -10,7 +10,14 @@ port: 8003
 # Read-only access to the sentinel namespace (infra/charts/agent-access).
 serviceAccountName: agent
 
+# SQLite file for incidents and investigations, on a small volume (kept across restarts).
+persistence:
+  enabled: true
+  size: 256Mi
+  mountPath: /data
+
 env:
+  DB_PATH: /data/agent.db
   WATCH_NAMESPACE: sentinel
   PROMETHEUS_URL: http://monitoring-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
   LOKI_URL: http://loki.logging.svc.cluster.local:3100

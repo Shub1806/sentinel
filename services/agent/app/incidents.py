@@ -6,8 +6,9 @@ Incidents are matched by those group labels (Notification.incident_key).
 One group that starts firing opens one incident. The incident is resolved once every
 alert in it is resolved. If the same group fires again later, that is a new incident.
 
-Kept in memory for now: a restart forgets the incidents (they move to SQLite later), but the
-agent reads the alerts that are still firing from Alertmanager when it starts (app/catchup.py).
+Everything is kept in memory and, when a database is given, written through to SQLite
+(app/storage.py) and loaded again on startup. Alerts that are still firing are also read
+from Alertmanager on startup (app/catchup.py), and match the reloaded incidents.
 """
 
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ from datetime import UTC, datetime
 from itertools import count
 
 from app.alerts import Alert, Notification
+from app.records import Investigation
 
 
 @dataclass
@@ -39,8 +41,8 @@ class Incident:
     resolved_at: datetime | None = None
     notifications: int = 0
     alerts: dict[str, AlertState] = field(default_factory=dict)
-    # Investigations of this incident (app.investigator.Investigation), oldest first.
-    investigations: list = field(default_factory=list)
+    # Investigations of this incident, oldest first.
+    investigations: list[Investigation] = field(default_factory=list)
 
     @property
     def firing_alerts(self) -> int:
@@ -61,11 +63,25 @@ def _state(alert: Alert) -> AlertState:
 
 
 class IncidentStore:
-    def __init__(self, clock=lambda: datetime.now(UTC)) -> None:
+    def __init__(self, clock=lambda: datetime.now(UTC), db=None) -> None:
         self._clock = clock
-        self._ids = count(1)
+        self._db = db
         self._incidents: dict[int, Incident] = {}
         self._open_by_group: dict[str, int] = {}
+        last_incident = last_investigation = 0
+        for incident in db.load() if db else []:
+            self._incidents[incident.id] = incident
+            if incident.status == "firing":
+                self._open_by_group[incident.group_key] = incident.id
+            last_incident = max(last_incident, incident.id)
+            for inv in incident.investigations:
+                last_investigation = max(last_investigation, inv.id)
+                if inv.status in ("queued", "running"):
+                    # The agent stopped while this was in progress; it will not continue.
+                    inv.status, inv.error = "failed", "the agent restarted before it finished"
+                    db.save_investigation(inv)
+        self._ids = count(last_incident + 1)
+        self._investigation_ids = count(last_investigation + 1)
 
     def record(self, notification: Notification) -> tuple[Incident, bool]:
         """Applies one notification. Returns the incident and whether it was just opened."""
@@ -95,7 +111,19 @@ class IncidentStore:
             incident.status = "resolved"
             incident.resolved_at = now
             del self._open_by_group[incident.group_key]
+        if self._db:
+            self._db.save_incident(incident)
         return incident, opened
+
+    def new_investigation(self, incident: Incident, model: str) -> Investigation:
+        inv = Investigation(id=next(self._investigation_ids), incident_id=incident.id, model=model)
+        incident.investigations.append(inv)
+        self.save_investigation(inv)
+        return inv
+
+    def save_investigation(self, inv: Investigation) -> None:
+        if self._db:
+            self._db.save_investigation(inv)
 
     def get(self, incident_id: int) -> Incident | None:
         return self._incidents.get(incident_id)

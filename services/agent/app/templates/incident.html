@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}#{{ incident.id }} {{ incident.title }} · sentinel agent{% endblock %}
+{% block content %}
+<p class="small"><a href="/">← incidents</a></p>
+<h1>#{{ incident.id }} {{ incident.title }} <span class="tag {{ incident.status }}">{{ incident.status }}</span></h1>
+<p class="muted small">opened {{ incident.opened_at|utc }}{% if incident.resolved_at %} · resolved {{ incident.resolved_at|utc }}{% endif %} · lasted {{ duration(incident.opened_at, incident.resolved_at) }} · {{ incident.notifications }} notification(s)</p>
+
+<h2>Report</h2>
+{% if not shown %}
+<p class="muted">Not investigated{% if not settings.llm_model %} (no model configured){% endif %}.</p>
+{% elif shown.report %}
+{% set r = shown.report %}
+<div class="panel report">
+  <p class="summary">{{ r.summary }}</p>
+  <dl class="kv">
+    <dt>likely cause</dt><dd>{{ r.likely_cause or "-" }}</dd>
+    <dt>confidence</dt><dd>{{ r.confidence }}</dd>
+    <dt>by</dt><dd>{{ shown.model }} · {{ duration(shown.started_at, shown.finished_at) }} · {{ shown.tokens }} tokens · {{ shown.steps|length }} steps</dd>
+  </dl>
+  {% if r.evidence %}
+  <p class="muted small" style="margin:14px 0 4px">evidence</p>
+  <ul style="margin:0;padding-left:20px">{% for e in r.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% endif %}
+  <div class="action">
+    <div>suggested action: <span class="kind">{{ r.suggested_action.kind }}</span>{% if r.suggested_action.target %} <code>{{ r.suggested_action.target }}</code>{% endif %}</div>
+    {% if r.suggested_action.detail %}<div class="small" style="margin-top:4px">{{ r.suggested_action.detail }}</div>{% endif %}
+    <div class="muted small" style="margin-top:6px">Suggestions are not carried out. Approve/Reject comes in the next step.</div>
+  </div>
+</div>
+{% else %}
+<div class="panel">
+  <p><span class="tag {{ shown.status }}">{{ shown.status }}</span> {{ shown.model }}{% if shown.status in ("queued", "running") %} · {{ shown.steps|length }} steps so far{% endif %}</p>
+  {% if shown.error %}<p>{{ shown.error }}</p>{% endif %}
+  {% if shown.raw_answer %}<p class="muted small">The answer was not a valid report:</p><pre>{{ shown.raw_answer }}</pre>{% endif %}
+</div>
+{% endif %}
+
+<form class="inline" method="post" action="/ui/incidents/{{ incident.id }}/investigate" style="margin-top:12px">
+  <label class="small muted" for="model">investigate again with</label>
+  <input id="model" name="model" value="{{ settings.llm_model }}" size="16">
+  <button type="submit">investigate</button>
+</form>
+
+{% if shown and shown.steps %}
+<h2>What the agent looked at</h2>
+<ol class="steps">
+{% for s in shown.steps %}
+  <li><span class="tag">{{ "auto" if s.auto else "model" }}</span> <strong>{{ s.tool }}</strong> <code class="small">{{ s.arguments|tojson }}</code> <span class="muted small">{{ s.seconds }}s</span>
+    <details><summary>result ({{ s.result|length }} chars)</summary><pre>{{ s.result }}</pre></details></li>
+{% endfor %}
+</ol>
+<p class="muted small">auto = collected by fixed rules before the model's first turn · model = chosen by the model</p>
+{% endif %}
+
+<h2>Alerts</h2>
+<table>
+  <tr><th>alert</th><th>status</th><th>since</th><th>labels</th><th class="hide-narrow">summary</th></tr>
+  {% for a in incident.alerts.values() %}
+  <tr><td>{{ a.name }}</td><td><span class="tag {{ a.status }}">{{ a.status }}</span></td><td class="small">{{ a.starts_at|utc }}</td>
+      <td class="small">{% for k, v in a.labels.items() if k not in ("alertname",) %}{{ k }}={{ v }}<br>{% endfor %}</td>
+      <td class="hide-narrow small">{{ a.annotations.get("summary", "") }}</td></tr>
+  {% endfor %}
+</table>
+
+{% if incident.investigations|length > 1 %}
+<h2>All investigations</h2>
+<table>
+  <tr><th class="hide-narrow">#</th><th>model</th><th>status</th><th class="hide-narrow">took</th><th class="hide-narrow">steps</th><th>likely cause / error</th></tr>
+  {% for inv in incident.investigations|reverse %}
+  <tr><td class="hide-narrow">{{ inv.id }}</td><td>{{ inv.model }}</td><td><span class="tag {{ inv.status }}">{{ inv.status }}</span></td>
+      <td class="hide-narrow small">{{ duration(inv.started_at, inv.finished_at) }}</td><td class="hide-narrow">{{ inv.steps|length }}</td>
+      <td class="small">{% if inv.report %}{{ inv.report.likely_cause }} → {{ inv.report.suggested_action.kind }} {{ inv.report.suggested_action.target }}{% else %}{{ inv.error }}{% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}
