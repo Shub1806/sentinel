@@ -38,7 +38,7 @@ jobs:
           java-version: "21"
           cache: maven
       # Includes the Testcontainers tests (real Postgres and Kafka in Docker).
-      - run: ./mvnw -B -q test
+      - run: ./mvnw -B test
 
   payments:
     name: payments (Python)
