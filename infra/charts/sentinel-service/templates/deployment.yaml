@@ -8,6 +8,10 @@ spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
+  {{- if .Values.persistence.enabled }}
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "svc.selectorLabels" . | nindent 6 }}
@@ -16,8 +20,10 @@ spec:
       labels:
         {{- include "svc.podLabels" . | nindent 8 }}
       annotations:
-        # Changes whenever the ConfigMap changes, which makes Kubernetes restart the pods.
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # Changes whenever the settings change, which makes Kubernetes restart the pods.
+        # Only the values, not the rendered ConfigMap: its labels include the chart version,
+        # and a chart change alone should not restart anything.
+        checksum/config: {{ .Values.env | toJson | sha256sum }}
     spec:
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       {{- with .Values.serviceAccountName }}
@@ -82,6 +88,15 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp               # ...but gets a writable scratch folder
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "svc.name" . }}-data
+        {{- end }}

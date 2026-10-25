@@ -1,0 +1,16 @@
+{{- if .Values.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "svc.name" . }}-data
+  labels:
+    {{- include "svc.labels" . | nindent 4 }}
+  annotations:
+    # Keep the data if the Helm release is removed.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}

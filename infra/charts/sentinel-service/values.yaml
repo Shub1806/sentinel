@@ -54,6 +54,13 @@ autoscaling:
   targetCPUUtilizationPercentage: 70   # % of the pod's CPU *request*
 
 
+# A PersistentVolumeClaim mounted into the pod. Only the agent uses one (its SQLite file).
+# With it on, updates replace the pod (Recreate) instead of running two pods on one volume.
+persistence:
+  enabled: false
+  size: 256Mi
+  mountPath: /data
+
 # Prometheus scraping. When enabled, the chart creates a ServiceMonitor that tells
 # Prometheus to collect metrics from this service's "http" port at the given path.
 metrics:
