@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  K3D_VERSION: v5.8.3
-  TERRAFORM_VERSION: 1.16.0
+  K3D_VERSION: v5.9.0
+  TERRAFORM_VERSION: 1.16.6
   PROMETHEUS_IMAGE: prom/prometheus:v3.15.0
 
 jobs:
