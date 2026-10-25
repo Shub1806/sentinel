@@ -57,7 +57,7 @@
   <tr><th>alert</th><th>status</th><th>since</th><th>labels</th><th class="hide-narrow">summary</th></tr>
   {% for a in incident.alerts.values() %}
   <tr><td>{{ a.name }}</td><td><span class="tag {{ a.status }}">{{ a.status }}</span></td><td class="small">{{ a.starts_at|utc }}</td>
-      <td class="small">{% for k, v in a.labels.items() if k not in ("alertname",) %}{{ k }}={{ v }}<br>{% endfor %}</td>
+      <td class="small">{% for k, v in a.labels.items() if k not in ("alertname", "prometheus") %}{{ k }}={{ v }}<br>{% endfor %}</td>
       <td class="hide-narrow small">{{ a.annotations.get("summary", "") }}</td></tr>
   {% endfor %}
 </table>

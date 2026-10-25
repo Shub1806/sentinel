@@ -275,11 +275,14 @@ def kubernetes_tools(api: KubeApi | None, namespace: str, clock=lambda: datetime
                 "note": "only one revision exists",
             }
         previous = owned[1]
+        new = describe(newest)
         return {
             "deployment": p.deployment,
-            "newest": describe(newest),
+            "newest": new,
             "previous": describe(previous),
             "changes": template_changes(previous, newest) or ["no differences in the pod template"],
+            # Said plainly, so the model doesn't have to work it out from the numbers.
+            "new_pods_healthy": new["replicas"] > 0 and new["ready"] == new["replicas"],
         }
 
     async def get(p: GetParams) -> dict:

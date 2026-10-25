@@ -68,6 +68,7 @@ def test_shows_the_added_setting_of_a_bad_rollout(tmp_path):
     assert out["previous"]["revision"] == 2
     assert out["previous"]["ready"] == 1
     assert out["changes"] == ["payments: env MAX_AMOUNT_CENTS added = abc"]
+    assert out["new_pods_healthy"] is False
 
 
 def test_image_config_and_secret_reference_changes(tmp_path):
@@ -104,6 +105,6 @@ def test_identical_templates_say_so(tmp_path):
         replicaset("payments", 2, [], "2026-10-22T21:00:00Z", 1),
     ]
 
-    assert json.loads(diff(items, tmp_path=tmp_path))["changes"] == [
-        "no differences in the pod template"
-    ]
+    out = json.loads(diff(items, tmp_path=tmp_path))
+    assert out["changes"] == ["no differences in the pod template"]
+    assert out["new_pods_healthy"] is True

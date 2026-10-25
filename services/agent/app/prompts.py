@@ -37,6 +37,8 @@ confidence "low".
 - If the latest rollout changed something (image, environment) and its new pods are failing, \
 that change is the prime suspect: rollout_undo on that deployment reverts it. A restart would \
 bring back the same broken settings.
+- A rollout whose new pods are all healthy (new_pods_healthy: true) is very unlikely to be the \
+cause; look elsewhere.
 - Check dependencies (Postgres, Redpanda, LocalStack) only when the evidence points to them.
 Times are UTC.
 
