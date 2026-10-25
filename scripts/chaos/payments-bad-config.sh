@@ -13,7 +13,14 @@ case "${1:-}" in
   recover)
     # Removing the variable brings the pod template back to the working version.
     kubectl -n "$NS" set env deploy/payments MAX_AMOUNT_CENTS-
-    kubectl -n "$NS" rollout status deploy/payments --timeout=120s
+    # A rollout that was stuck for more than 10 minutes first reports its old "exceeded its
+    # progress deadline" condition, before the controller picks up the change. Try again.
+    for attempt in 1 2 3; do
+      kubectl -n "$NS" rollout status deploy/payments --timeout=120s && exit 0
+      echo "rollout status failed (attempt $attempt), checking again in 5 s"
+      sleep 5
+    done
+    exit 1
     ;;
   *)
     echo "Usage: $0 inject|recover" >&2
